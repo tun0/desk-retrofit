@@ -10,7 +10,12 @@ changing anything in that area** — most of the non-obvious decisions have a
 measurement behind them, and several are only correct because an earlier
 answer was wrong.
 
-Do not read the whole README by default. Section map:
+`APPENDIX.md` holds background, rejected alternatives and future work. Nothing
+in it is needed to build the current design. **Check it before proposing an
+approach or changing a parameter that looks arbitrary** — several obvious
+ideas were already tried and rejected for reasons that are not obvious.
+
+Do not read either file in full by default. Section map:
 
 | Need | Section |
 |---|---|
@@ -21,7 +26,10 @@ Do not read the whole README by default. Section map:
 | **Wrong turns — read before re-deriving anything** | §5 |
 | Part selection traps | §6 |
 | Firmware architecture | §7 |
-| Position sensing (not yet built) | §8 |
+| Position sensing (not yet built) | §8, and APPENDIX §2 |
+| Collision detection, PWM, sensing detail | APPENDIX §1 |
+| **Already-rejected approaches** | APPENDIX §5 |
+| Schematic tooling and its dead ends | APPENDIX §7 |
 
 ## Hard invariants
 
@@ -73,6 +81,7 @@ Do not re-derive these; they were measured on the actual desk.
 ## Layout
 
 ```
+APPENDIX.md    background, rejected alternatives, phase-2 analysis
 schematics/    KiCad 7 format, symbols embedded, no external libs
                desk_simple.*   <- the chosen design
                desk_original.* <- the desk as found

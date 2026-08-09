@@ -287,39 +287,18 @@ Full schematic: `desk_original.kicad_sch` / `.pdf`.
 
 ## 3. Design evolution
 
-Four designs were considered in sequence. Recording why each was superseded is
-more useful than only recording the winner.
+Four designs were considered in sequence:
 
-### 3.1 H-bridge IC (`desk_retrofit`)
+| | Design | Outcome |
+|---|---|---|
+| 3.1 | ESP32 + integrated H-bridge IC | rejected on voltage headroom |
+| 3.2 | Relay direction + low-side FET PWM | adopted as the drive topology |
+| 3.3 | In-line interceptor with 3-pole transfer relay and automatic fallback | good design, dropped as over-complex |
+| 3.4 | **Simple in-line drive** | **chosen** |
 
-ESP32 + integrated H-bridge replacing the rockers entirely.
-
-Rejected in favour of relays, but the reasoning is still worth having:
-- Voltage headroom is the constraint, not current. The 29 V rail (30 V
-  unloaded) rules out the usual hobby recommendations — see §6.1.
-- Built-in current-sense outputs are scaled for tens of amps and give almost
-  no resolution across the real 0–3 A working range.
-
-### 3.2 Relay direction + FET PWM
-
-Two relays reverse polarity; one low-side MOSFET does the PWM. Cheaper, no
-voltage-rating anxiety, and **no shoot-through failure mode** — no combination
-of relay states can short the supply, which an H-bridge cannot promise.
-
-A single DPDT was considered and rejected: it has no neutral state, so it
-cannot brake. Two independent SPDTs give four states (two drive, two brake),
-which is exactly what the OEM rockers do.
-
-### 3.3 In-line interceptor with transfer relay (`desk_inline`)
-
-The board sits in the 4-core cable. A 3-pole transfer relay selects between the
-stock path (handset drives the winding directly) and the board path. Power
-loss or watchdog timeout drops the transfer and hands the desk back to the
-rockers automatically.
-
-Elegant, and the automatic fallback is genuinely the nicest property of any
-design here. Rejected only because it needs five relay poles and the fallback
-isn't worth that complexity for this use case.
+> Why each of the first three lost, and what would be worth keeping if any
+> were revived, is in **`APPENDIX.md` §5**. Several were reasonable at the time
+> and became obsolete only when a later measurement changed the picture.
 
 ### 3.4 Simple in-line drive (`desk_simple`) — **CHOSEN**
 
@@ -396,7 +375,10 @@ WiFi is active.
 ### 4.5 Failsafe layer
 
 - **Boot state.** R1/R2/R6 hold all three drive lines at "off" before firmware
-  runs. Keep these on non-strapping GPIOs.
+  runs. These *must* sit on non-strapping GPIOs — on the classic ESP32 avoid
+  GPIO0, 2, 12 and 15, since a pull resistor there fights the bootloader and
+  GPIO12 pulled high selects the wrong flash voltage. The S3's strapping set
+  differs; the principle holds.
 - **Watchdog.** A 74HC123 retriggerable monostable (~250 ms) gates all three
   drive lines through a 74HC08. The ESP32 must keep kicking it. This sits
   **downstream of the MCU** deliberately: LEDC PWM keeps running in hardware
@@ -606,24 +588,20 @@ before anything can move.
 
 Phase 1 deliberately has no absolute position sensing. Presets need it.
 
-### 8.1 Options
+> Full option analysis, including mounting constraints, range limits and the
+> approaches that will not work, is in **`APPENDIX.md` §2**. The summary below is
+> the decision, not the reasoning.
 
-- **VL53L1X ToF**, aimed at the fixed foot plate rather than the floor —
-  rigid, always-present target, no footwell clutter. Range at max height is
-  ~1100 mm, which is where the VL53L1X gets marginal: the ~4 m spec is
-  dark-room, and ambient IR pulls it toward ~1.3 m. Prototype at full height
-  before committing to a mount. Use long-distance mode, 100–200 ms timing
-  budget, a matte white target, and run offset/crosstalk calibration.
-- **Reflective or magnetic incremental encoder** along one column. 2 mm pitch
-  is plenty at 25 mm/s. Needs a rigid 500 mm scale, which is mechanically
-  fussier than pointing a sensor at a foot plate.
-- **Commutator ripple counting** on the existing current sense. Zero extra
-  hardware, but messy under PWM and loses counts around start and stop — the
-  moments that matter. Viable as a cross-check, not as primary.
+### 8.1 Direction
 
-Absolute encoding is not worth paying for: the bottom limit switch already
-provides a repeatable mechanical reference, detected by current collapse. One
-trip down and you're calibrated.
+Leading candidate is a **VL53L1X time-of-flight sensor** aimed at the fixed
+foot plate. Absolute encoding is not worth paying for, because the bottom
+limit switch already gives a repeatable mechanical reference detected by
+current collapse — one trip down re-homes the desk.
+
+> Full analysis — mounting constraints, the range limit that could sink it,
+> incremental optical and magnetic alternatives, commutator ripple counting,
+> and why an IMU cannot do this — is in **`APPENDIX.md` §2**.
 
 ### 8.2 Data worth logging from day one
 
@@ -659,6 +637,8 @@ already built.
 
 | File | Purpose |
 |---|---|
+| `APPENDIX.md` | Background, rejected alternatives, phase-2 analysis — not required to build |
+| `CLAUDE.md` | Project context for Claude Code |
 | `desk_original.kicad_sch` / `.pdf` / `.svg` | The desk as found |
 | `desk_simple.kicad_sch` / `.pdf` / `.svg` | **The chosen design** |
 | `desk_inline.kicad_sch` / `.pdf` / `.svg` | Transfer-relay variant with auto-fallback |
