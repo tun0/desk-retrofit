@@ -5,10 +5,7 @@ Two SPDT rockers form an H-bridge across the 29V rails; the winding sits
 between their commons, in series with a diode-bypassed limit switch at each
 end of travel.
 """
-import sys
-sys.path.insert(0, "/home/claude/kicad")
-from schlib import (Schematic, Sym, poly, circ, rect, stext,  # noqa: E402
-                    NOFILL, BGFILL)
+from schlib import Schematic, Sym, poly, circ, rect, stext, NOFILL, BGFILL
 
 P = "passive"
 PO = "power_out"
@@ -166,5 +163,5 @@ for i, t in enumerate(notes):
     if t:
         s.note(t, 50, 160 + i * 5.5, 1.4)
 
-open("/home/claude/kicad/desk_original.kicad_sch", "w").write(s.render())
+open("desk_original.kicad_sch", "w").write(s.render())
 print("wrote desk_original.kicad_sch")

@@ -87,18 +87,28 @@ schematics/    KiCad 7 format, symbols embedded, no external libs
                desk_original.* <- the desk as found
                desk_inline.*   <- rejected variant, kept for reference
                schlib.py       <- drawing primitives
+               symbols.py      <- shared symbol library (see below)
                sch_*.py        <- one generator per sheet
+               Makefile        <- `make` regenerates .kicad_sch/.pdf/.svg
 my_components/desk/   ESPHome external component (cover platform)
 desk.yaml             example ESPHome config
 ```
 
 **Schematics are generated, not hand-edited.** Edit `sch_simple.py` and
 re-run; do not edit the `.kicad_sch` directly or the change is lost.
+All three generators share symbol definitions from `symbols.py` (`sch_inline.py`
+still carries its own inline copy of the same symbols — this was not
+deduplicated, to avoid touching a generator that already worked).
 
 ```sh
-cd schematics && python3 sch_simple.py
-kicad-cli sch export pdf desk_simple.kicad_sch
+cd schematics && make
 ```
+
+`make` regenerates any `.kicad_sch`/`.pdf`/`.svg` whose generator changed. The
+`.kicad_sch` files are marked `.PRECIOUS` in the Makefile — without that, GNU
+Make treats them as disposable intermediates in the `.py → .kicad_sch → .pdf`
+chain and deletes them after export, which would delete a tracked file. Don't
+remove that line.
 
 ## Open work
 

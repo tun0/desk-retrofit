@@ -5,10 +5,7 @@ Real horizontal power rails with taps, and the control chain
 (MCU -> gating -> coil drivers -> relays -> contacts) drawn as wires.
 Global labels are kept only for genuine long hauls across the sheet.
 """
-import sys
-sys.path.insert(0, "/home/claude/kicad")
-from schlib import (Schematic, Sym, poly, circ, rect, stext,  # noqa: E402
-                    NOFILL, BGFILL)
+from schlib import Schematic, Sym, poly, circ, rect, stext, NOFILL, BGFILL
 
 P, I, O, PWI, PWO = "passive", "input", "output", "power_in", "power_out"
 
@@ -475,5 +472,5 @@ for i, t in enumerate(notes):
     if t:
         s.note(t, 48, 545 + i * 5.6, 1.6)
 
-open("/home/claude/kicad/desk_inline.kicad_sch", "w").write(s.render())
+open("desk_inline.kicad_sch", "w").write(s.render())
 print("wrote desk_inline.kicad_sch")

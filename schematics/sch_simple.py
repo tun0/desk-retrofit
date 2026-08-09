@@ -7,9 +7,9 @@ cable and permanently owns the winding; the handset is permanently fed
 
 Reverting is physical: motor - box - handset  becomes  motor - handset.
 """
-import sys
-sys.path.insert(0, "/home/claude/kicad")
-exec(open("/home/claude/kicad/_sym_preamble.py").read())  # noqa: E402,S102
+from symbols import (Schematic, GNDS, RAILS, _rail, R_, RH, C_, F_, DH, DV,  # noqa: E402
+                     TVS, NMOS, MOT, LIM, RLY, box, BUCK, MCU, MONO, AND2,
+                     DRVX, ACS, CONN, PSUB)
 
 s = Schematic("desk_simple", "Slangerup desk - simple in-line drive",
               "Box owns the winding; unplug it to revert", paper="A1")
@@ -346,5 +346,5 @@ for i, t in enumerate(notes):
     if t:
         s.note(t, 55, 500 + i * 5.8, 1.7)
 
-open("/home/claude/kicad/desk_simple.kicad_sch", "w").write(s.render())
+open("desk_simple.kicad_sch", "w").write(s.render())
 print("wrote desk_simple.kicad_sch")

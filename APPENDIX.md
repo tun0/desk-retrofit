@@ -355,3 +355,29 @@ kicad-cli sch export svg --output . desk_simple.kicad_sch
 
 **ERC has never been run.** Expect power-flag and pin-type complaints;
 cosmetic rather than structural.
+
+**`sch_simple.py` was not actually regenerable when this repo was first
+committed.** It pulled its symbol library in with
+`exec(open("/home/claude/kicad/_sym_preamble.py").read())` — a file that only
+ever existed in the sandbox the original Claude.ai session ran in, and was
+never part of the export. `sch_original.py` and `sch_inline.py` had already
+been migrated to a normal `from schlib import ...` and defined their symbols
+inline, so only `sch_simple.py` was affected, but it's the chosen design —
+the committed `desk_simple.kicad_sch` was an artefact nothing in the repo
+could reproduce. All three generators also wrote their output to that same
+sandbox path (`/home/claude/kicad/desk_*.kicad_sch`) instead of the working
+directory.
+
+Fixed by extracting the symbol set `sch_simple.py` needs into `symbols.py`
+(copied from the equivalent block already inline in `sch_inline.py` — the two
+generators need the same symbols) and pointing the relevant `open()` calls at
+the local directory. Verified by regenerating all three `.kicad_sch` files
+and diffing byte-for-byte against what was already committed: identical.
+`sch_inline.py` was left with its own inline copy rather than switched to
+import `symbols.py` too, since it already worked and didn't need touching.
+
+A `Makefile` in `schematics/` now runs the full `.py → .kicad_sch → .pdf/.svg`
+chain. It marks the `.kicad_sch` targets `.PRECIOUS` — without that, GNU
+Make treats a file that is a build product of one rule and only a
+prerequisite of another as a disposable intermediate and deletes it after
+use, which would silently delete the tracked schematic.
