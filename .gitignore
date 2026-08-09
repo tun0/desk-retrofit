@@ -1,0 +1,6 @@
+.esphome/
+*.bin
+*-backups/
+*.kicad_prl
+*.kicad_pro
+fp-info-cache

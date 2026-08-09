@@ -1,0 +1,75 @@
+# Example ESPHome config using the custom desk component.
+# Place this next to a `my_components/` folder containing desk/.
+
+esphome:
+  name: standing-desk
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+external_components:
+  - source:
+      type: local
+      path: my_components
+    components: [desk]
+
+wifi: !include wifi.yaml
+logger:
+api:
+ota:
+  - platform: esphome
+
+# 20 kHz: above audible, and short compared with the winding's L/R.
+output:
+  - platform: ledc
+    id: motor_pwm
+    pin: GPIO27
+    frequency: 20000Hz
+
+cover:
+  - platform: desk
+    name: "Standing desk"
+    id: desk1
+    pwm: motor_pwm
+    relay_up:
+      number: GPIO21
+      inverted: false      # set true if your relay module is active-low
+    relay_down:
+      number: GPIO22
+      inverted: false
+    watchdog_pin: GPIO19
+    current_pin: 35        # ADC1 only; ADC2 is unusable with WiFi
+    ramp_up_ms: 500
+    ramp_down_ms: 300
+    settle_ms: 50
+    travel_mm: 500
+    speed_mm_s: 25.0
+    max_run_ms: 25000
+    stall_current: 2.2
+
+sensor:
+  - platform: template
+    name: "Desk current"
+    unit_of_measurement: A
+    accuracy_decimals: 2
+    update_interval: 1s
+    lambda: 'return id(desk1).current_amps();'
+
+# The OEM rockers, read as active-low dry contacts.
+binary_sensor:
+  - platform: gpio
+    id: rocker_up
+    pin: {number: GPIO32, mode: INPUT_PULLUP, inverted: true}
+    on_press:
+      then: [cover.open: desk1]
+    on_release:
+      then: [cover.stop: desk1]
+  - platform: gpio
+    id: rocker_down
+    pin: {number: GPIO33, mode: INPUT_PULLUP, inverted: true}
+    on_press:
+      then: [cover.close: desk1]
+    on_release:
+      then: [cover.stop: desk1]
