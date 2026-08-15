@@ -367,7 +367,7 @@ for ref, gate_unit in (("Q2", 1), ("Q3", 2)):
     s.wire(ps, (DRAIN_X, ps[1] + 15))
     gnd_tap(DRAIN_X, ps[1] + 15)
 
-s.place(NMOS, "Q1", "IRLB8721", Q1_X, Q1_Y)
+s.place(NMOS, "Q1", "IRLZ44N", Q1_X, Q1_Y)
 q1_drain, q1_source = s.pin("Q1", "2"), s.pin("Q1", "3")
 # Gate already wired to the Q4/Q5 push-pull output above.
 GND_GAP = 8.0

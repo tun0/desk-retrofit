@@ -205,11 +205,12 @@ AND2 = import_symbol(f"{KICAD_SYMBOLS}/74xx.kicad_sym", "74LS08",
 # Gate driver is discrete instead of an IC: a complementary BJT push-pull
 # (BC337 NPN + BC327 PNP, both on hand already) driven by the AND gate's
 # 5V output through a base resistor. Output swings ~0.6V (off, well under
-# Vgs(th)) to ~4.4V (on) - not a full 0-5V swing, but 4.4V lands right on
-# the ~4.5V Vgs IRLB8721's own "logic level" Rds(on) is characterised at,
-# so it isn't the compromise it looks like. Both share the same generic
-# CBE pin layout (C top, B left, E bottom); PNP is placed mirrored (see
-# sch.py) so its collector points down to GND instead of up.
+# Vgs(th)) to ~4.4V (on) - not a full 0-5V swing, but close enough to the
+# 5V Vgs Q1's own "logic level" Rds(on) is characterised at that it isn't
+# the compromise it looks like. Q1 is IRLZ44N, not IRLB8721 - the latter's
+# 30V VDSS doesn't clear this 29-30V rail, see README 6.2. Both BJTs share
+# the same generic CBE pin layout (C top, B left, E bottom); PNP is placed
+# mirrored (see sch.py) so its collector points down to GND instead of up.
 # BC337/BC327 themselves are thin "extends" wrappers in Kicad's library
 # (same reason 74HC123 needed 74LS123) - importing the generic base
 # symbol directly gets the real pins/graphics; place() still sets the

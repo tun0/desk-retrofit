@@ -31,14 +31,28 @@ Working list of what's outstanding. Not a durable doc like `README.md` /
 Came out of a separate claude.ai session; ground rules and full detail are in
 that file. Titles only, for a quick glance:
 
-- [ ] 1. Replace 2N7002 with 2N7000 (through-hole)
-- [ ] 2. Record the 74HC122 investigation as a negative result
+- [ ] 1. Replace 2N7002 with 2N7000 (through-hole) — Q2/Q3 still `2N7002`
+  in `sch.py`, still open.
+- [ ] 2. Record the 74HC122 investigation as a negative result — not yet
+  in `APPENDIX.md` §5.
 - [ ] 3. Propose a use for the spare half of the 74HC123
-- [ ] 4. Note the through-hole constraint in the BOM
-- [ ] 5. Record sourcing constraints (Netherlands)
-- [ ] 6. Pin down the current sensor specification
-- [ ] 7. Confirm two earlier fixes are present
-- [ ] (see "Not yet decided" section at the end of HANDOFF.md too)
+- [ ] 4. Note the through-hole constraint in the BOM — not yet in
+  `README.md` §6.
+- [ ] 5. Record sourcing constraints (Netherlands) — README §6 has a
+  thinner sourcing note already; HANDOFF's fuller Digikey/Farnell-rejected,
+  Reichelt/TME/Opencircuit/Antratek breakdown isn't in it yet.
+- [x] 6. Pin down the current sensor specification. Already decided in the
+  schematic, just not narrated where HANDOFF looked: `symbols.py` imports
+  `ACS724xLCTR-05AB` for U5 (bidirectional, 5A range — exactly HANDOFF's
+  two requirements), and README §4.4 already assumes this part. HANDOFF's
+  "Not yet decided" framing was stale relative to the repo.
+- [x] 7. Confirm two earlier fixes are present. Half held, half didn't:
+  `symbols.py` exists and no generator uses `exec()` — confirmed OK. Q1
+  was still `IRLB8721` (30V) on the 29-30V rail, not `IRLZ44N` (55V) as
+  the earlier session intended — genuinely hadn't survived into the repo.
+  Fixed now (`sch.py`, README §6.2/§5 item 9).
+- [ ] (see "Not yet decided" section at the end of HANDOFF.md too — stale
+  on item 6, see above; items 3 and 5's Mouser question still genuinely open)
 
 ## Known gaps (already tracked in CLAUDE.md "Open work")
 

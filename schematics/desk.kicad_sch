@@ -6972,7 +6972,7 @@
     (in_bom yes) (on_board yes) (dnp no)
     (uuid "4235803e-2c5a-556c-b6b1-05a538fe86e5")
     (property "Reference" "Q1" (at 397.51 328.93 0) (effects (font (size 1.27 1.27)) (justify left)))
-    (property "Value" "IRLB8721" (at 397.51 331.47 0) (effects (font (size 1.0 1.0)) (justify left)))
+    (property "Value" "IRLZ44N" (at 397.51 331.47 0) (effects (font (size 1.0 1.0)) (justify left)))
     (property "Footprint" "" (at 392.43 330.20 0) (effects (font (size 1.27 1.27)) hide))
     (property "Datasheet" "" (at 392.43 330.20 0) (effects (font (size 1.27 1.27)) hide))
     (pin "1" (uuid "7c3a2c18-593c-55f6-afd1-b6ad42aec4a8"))

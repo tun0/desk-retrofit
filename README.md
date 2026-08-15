@@ -435,6 +435,11 @@ Recorded because several later conclusions only make sense in light of these.
    desk, not somewhere a display is ever seen, so U2 is a bare
    ESP32-S3-DevKitC instead. A display, if ever wanted, would be a separate
    peripheral mounted on the desk itself, not part of this board.
+9. **Specified Q1 as IRLB8721.** Caught by an external review, not by this
+   project's own process — the schematic still had it after the part was
+   supposedly already swapped. IRLB8721's 30 V VDSS doesn't clear the 29–30 V
+   rail once flyback clamping is accounted for; fixed to IRLZ44N (55 V). See
+   §6.2.
 
 ---
 
@@ -446,11 +451,11 @@ Rough EUR incl. BTW, Netherlands. Prices are budgeting figures, not quotes.
 |---|---|---|
 | ESP32-S3-DevKitC | bare devkit, no display — see §5 | €5–15 |
 | 2-channel relay module | SRD-05VDC-SL-C or similar | €3–5 |
-| IRLB8721 MOSFET | logic-level, low Rds(on) | €1–2 |
-| TC4427 gate driver | required — see §6.2 | €2–3 |
+| IRLZ44N MOSFET | logic-level, 55V — see §6.2 | €1–2 |
+| BC337 + BC327 | discrete gate driver push-pull — see §6.2 | €1–2 |
 | 74HC123 + 74HC08 | watchdog and gating | €1–3 |
 | SB560 Schottky | freewheel | <€1 |
-| ACS724-5AB carrier | or 10 mΩ shunt + INA240, ~€8 less | €12–18 |
+| ACS724-5AB carrier | bidirectional, 5A — see §4.4; or 10 mΩ shunt + INA240, ~€8 less | €12–18 |
 | LM2596HV buck | **must** be rated >40 V in | €4–8 |
 | Fuse, holder, TVS | 2–2.5 A slow-blow | €3–6 |
 | Passives | resistors, caps | €4–8 |
@@ -474,12 +479,22 @@ buck input needs headroom above that. Common traps:
 - VNH5019: 5.5–24 V. Out of spec.
 - MP1584 / Mini-360 buck modules: top out ~28 V. Marginal at best.
 
-### 6.2 The gate driver is not optional
+### 6.2 Q1: voltage rating first, then the gate driver
 
-An IRLB8721 at 3.3 V Vgs is only partially enhanced. At 20 kHz that is how you
-cook a MOSFET that would otherwise dissipate under 0.1 W. Drive it from 5 V
-through the TC4427. Avoid the ubiquitous IRF520 "MOSFET trigger" modules —
-that FET isn't logic-level at all.
+**Q1 is IRLZ44N (55 V), not IRLB8721 (30 V).** The IRLB8721 is a common
+default for "logic-level MOSFET," but its 30 V VDSS doesn't clear this
+29 V nominal / 30 V unloaded rail — at PWM turn-off the freewheel diode
+clamps the drain to VSW plus a diode drop, putting it at or over absolute
+maximum every cycle. Substitution criterion for any replacement: check
+**Qg and VDSS**, not Vgs(th) — plenty of parts marketed as "logic-level"
+still top out at 30 V.
+
+The gate driver still isn't optional: at 3.3 V Vgs a logic-level MOSFET is
+only partially enhanced, and at 20 kHz that's how you cook a part that
+would otherwise dissipate under 0.1 W. This design drives Q1 from a
+discrete BC337/BC327 push-pull (not an IC — see `schematics/gen/symbols.py`),
+fed 5 V through the AND gate output. Avoid the ubiquitous IRF520 "MOSFET
+trigger" modules — that FET isn't logic-level at all.
 
 ### 6.3 Relay module checklist
 
