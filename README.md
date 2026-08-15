@@ -281,7 +281,9 @@ that. Practical consequences:
         V− ──┴──────────────┴──────────
 ```
 
-Full schematic: `desk_original.kicad_sch` / `.pdf`.
+Not kept as a separate schematic file — this circuit is fully captured by
+the measurements above and the diagram, and the stock wiring is unmodified
+in the chosen design (§4).
 
 ---
 
@@ -300,7 +302,7 @@ Four designs were considered in sequence:
 > were revived, is in **`APPENDIX.md` §5**. Several were reasonable at the time
 > and became obsolete only when a later measurement changed the picture.
 
-### 3.4 Simple in-line drive (`desk_simple`) — **CHOSEN**
+### 3.4 Simple in-line drive — **CHOSEN**
 
 Same in-line position, no transfer relay, no automatic fallback. The board
 owns the winding permanently. Reverting is physical:
@@ -317,14 +319,14 @@ conductors, so there is no transition window to protect against.
 
 ## 4. The chosen design
 
-Schematic: `desk_simple.kicad_sch` / `.pdf`.
+Schematic: `desk.kicad_sch` / `.pdf`.
 
 ### 4.1 Topology
 
 ```
 PSU 29V ──[F1]──┬── VSW rail
                 │
-                ├── buck ── +5V ── ESP32 + display
+                ├── buck ── +5V ── ESP32
                 │
           [K1]──┴──[K2]        two SPDT relays, NC→VSW, NO→MRET
             │       │
@@ -429,6 +431,10 @@ Recorded because several later conclusions only make sense in light of these.
    Local GND and rail symbols are the conventional idiom precisely because
    they avoid this. The real problem was that *signals* were labelled rather
    than wired.
+8. **Planned an "ESP32 devkit + display" (CYD).** This board lives under the
+   desk, not somewhere a display is ever seen, so U2 is a bare
+   ESP32-S3-DevKitC instead. A display, if ever wanted, would be a separate
+   peripheral mounted on the desk itself, not part of this board.
 
 ---
 
@@ -438,7 +444,7 @@ Rough EUR incl. BTW, Netherlands. Prices are budgeting figures, not quotes.
 
 | Item | Note | Cost |
 |---|---|---|
-| ESP32 devkit + display | CYD ~€12–25, or use one you have | €0–25 |
+| ESP32-S3-DevKitC | bare devkit, no display — see §5 | €5–15 |
 | 2-channel relay module | SRD-05VDC-SL-C or similar | €3–5 |
 | IRLB8721 MOSFET | logic-level, low Rds(on) | €1–2 |
 | TC4427 gate driver | required — see §6.2 | €2–3 |
@@ -628,8 +634,10 @@ already built.
 - The housings carry no legible moulded circuit numbers, so the §1.6 diagram
   is the sole definition of the numbering. Mark the MOT_A cavity with paint so
   the physical part carries the convention rather than this file.
-- ERC has not been run on any schematic. Expect power-flag and pin-type
-  complaints; cosmetic rather than structural.
+- ERC has been run (`kicad-cli sch erc`): 127 violations, all triaged as
+  either documented gaps (unused MCU pins, U3/U6 spare units, SDA/SCL
+  pending Phase 2) or artefacts of this design's power-flag/embedded-symbol
+  conventions — no structural defects found.
 
 ---
 
@@ -639,18 +647,17 @@ already built.
 |---|---|
 | `APPENDIX.md` | Background, rejected alternatives, phase-2 analysis — not required to build |
 | `CLAUDE.md` | Project context for Claude Code |
-| `desk_original.kicad_sch` / `.pdf` / `.svg` | The desk as found |
-| `desk_simple.kicad_sch` / `.pdf` / `.svg` | **The chosen design** |
-| `desk_inline.kicad_sch` / `.pdf` / `.svg` | Transfer-relay variant with auto-fallback |
-| `schlib.py` | Schematic primitives: symbols, wires, junctions |
-| `sch_original.py`, `sch_simple.py`, `sch_inline.py` | Generators for each sheet |
+| `schematics/desk.kicad_sch` / `.pdf` / `.svg` | **The chosen design** |
+| `schematics/NETLIST.md` | Connectivity reference, generated + annotated |
+| `schematics/gen/` | Generator and its dependencies — see `CLAUDE.md` |
 | `my_components/desk/` | ESPHome external component |
 | `desk.yaml` | Example ESPHome config |
 
 Schematics are KiCad 7 format (`version 20230121`); KiCad 7, 8 and 9 open them.
-Symbols are defined inline, so there are no external library dependencies.
-Regenerate with `python3 sch_simple.py`, then
-`kicad-cli sch export pdf desk_simple.kicad_sch`.
+Symbols are embedded (either hand-drawn or copied from real KiCad libraries),
+so there are no external library dependencies at open-time. Regenerate with
+`cd schematics/gen && make` (or `python3 sch.py`, then
+`kicad-cli sch export pdf ../desk.kicad_sch`).
 
 ---
 

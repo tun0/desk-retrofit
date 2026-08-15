@@ -83,32 +83,35 @@ Do not re-derive these; they were measured on the actual desk.
 ```
 APPENDIX.md    background, rejected alternatives, phase-2 analysis
 schematics/    KiCad 7 format, symbols embedded, no external libs
-               desk_simple.*   <- the chosen design
-               desk_original.* <- the desk as found
-               desk_inline.*   <- rejected variant, kept for reference
-               schlib.py       <- drawing primitives
-               symbols.py      <- shared symbol library (see below)
-               sch_*.py        <- one generator per sheet
-               Makefile        <- `make` regenerates .kicad_sch/.pdf/.svg
+               desk.kicad_sch/.pdf/.svg  <- the design, human-facing
+                                  (rejected variants dropped once this was
+                                  finalised — see APPENDIX §7)
+               NETLIST.md      <- connectivity reference, human-facing
+               gen/            <- generator + its dependencies (machine-facing)
+                 sch.py            <- the generator
+                 schlib.py         <- drawing primitives
+                 symbols.py        <- shared symbol library (see below)
+                 espressif.kicad_sym <- vendored ESP32 symbol (see its header)
+                 netlist_text.py   <- renders a .kicad_sch as plain text
+                 find_*.py         <- schematic-quality checkers, run via `make check`
+                 Makefile          <- `make` regenerates .kicad_sch/.pdf/.svg
 my_components/desk/   ESPHome external component (cover platform)
 desk.yaml             example ESPHome config
 ```
 
-**Schematics are generated, not hand-edited.** Edit `sch_simple.py` and
-re-run; do not edit the `.kicad_sch` directly or the change is lost.
-All three generators share symbol definitions from `symbols.py` (`sch_inline.py`
-still carries its own inline copy of the same symbols — this was not
-deduplicated, to avoid touching a generator that already worked).
+**Schematics are generated, not hand-edited.** Edit `schematics/gen/sch.py`
+and re-run; do not edit the `.kicad_sch` directly or the change is lost.
 
 ```sh
-cd schematics && make
+cd schematics/gen && make        # regenerate desk.kicad_sch/.pdf/.svg
+cd schematics/gen && make check  # run the shorts/diagonals/crossings/body-crossings checkers
 ```
 
-`make` regenerates any `.kicad_sch`/`.pdf`/`.svg` whose generator changed. The
-`.kicad_sch` files are marked `.PRECIOUS` in the Makefile — without that, GNU
-Make treats them as disposable intermediates in the `.py → .kicad_sch → .pdf`
-chain and deletes them after export, which would delete a tracked file. Don't
-remove that line.
+`make` regenerates `../desk.kicad_sch`/`.pdf`/`.svg` if the generator changed.
+The `.kicad_sch` target is marked `.PRECIOUS` in the Makefile — without that,
+GNU Make treats it as a disposable intermediate in the `.py → .kicad_sch →
+.pdf` chain and deletes it after export, which would delete a tracked file.
+Don't remove that line.
 
 ## Open work
 
@@ -117,7 +120,6 @@ remove that line.
 - Relay module active-high vs active-low is unverified. Wrong polarity
   energises both relays at boot.
 - Phase 2 (position feedback, presets) is not started. See README §8.
-- ERC has never been run on any schematic.
 
 ## Working style
 

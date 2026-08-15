@@ -292,10 +292,11 @@ is exactly why the OEM used two independent changeovers.
 
 ### 5.6 Transfer relay with automatic fallback
 
-Kept as `desk_inline.kicad_sch` because it is a good design, not a bad one.
-Three extra relay poles buy in-place OEM fallback: power loss or a watchdog
-timeout hands the desk back to the rockers with no intervention. Dropped only
-because reverting by unplugging the box was judged good enough.
+Kept as a schematic (`desk_inline.*`, since dropped — see §7) for a long time
+because it is a good design, not a bad one. Three extra relay poles buy
+in-place OEM fallback: power loss or a watchdog timeout hands the desk back
+to the rockers with no intervention. Dropped only because reverting by
+unplugging the box was judged good enough.
 
 If it is ever revived, the one subtlety worth keeping is that the transfer
 poles carry full motor current in OEM mode and must be rated accordingly,
@@ -327,18 +328,26 @@ refusal often arrives with a model number attached.
 ## 7. Tooling notes
 
 **Schematics are generated.** `schlib.py` provides symbol definitions with
-absolute pin lookup, orthogonal wire routing and junctions; each `sch_*.py`
-lays out one sheet. Edit the generator, never the `.kicad_sch`.
+absolute pin lookup, orthogonal wire routing and junctions; `sch.py` lays
+out the sheet. Edit the generator, never the `.kicad_sch`. Generator and
+dependencies live in `schematics/gen/`; the `.kicad_sch`/`.pdf`/`.svg` and
+`NETLIST.md` land one level up in `schematics/` — machine-facing tooling
+kept apart from the human-facing result.
 
 **Format version is KiCad 7 (`20230121`)**, chosen because that is what
 `kicad-cli` was available at. KiCad 7, 8 and 9 all open it. Symbols are
-defined inline, so there are no external library dependencies.
+embedded verbatim (hand-drawn, or copied out of real KiCad libraries via
+`import_symbol()`), so there are no external library dependencies at
+open-time.
 
-Export:
+Export (from `schematics/gen/`):
 
 ```sh
-kicad-cli sch export pdf desk_simple.kicad_sch
-kicad-cli sch export svg --output . desk_simple.kicad_sch
+kicad-cli sch export pdf -o ../desk.pdf ../desk.kicad_sch
+cd .. && kicad-cli sch export svg desk.kicad_sch   # -o always names a
+                                                    # directory for svg,
+                                                    # never a file - cd
+                                                    # first instead
 ```
 
 **Two dead ends in the drawing work**, recorded so they are not repeated:
@@ -353,8 +362,9 @@ kicad-cli sch export svg --output . desk_simple.kicad_sch
   actual problem in that draft was that *signals* were labelled rather than
   wired.
 
-**ERC has never been run.** Expect power-flag and pin-type complaints;
-cosmetic rather than structural.
+**ERC has been run** (`kicad-cli sch erc`): 127 violations, all triaged as
+documented gaps or power-flag/embedded-symbol artefacts — no structural
+defects. See README §9.
 
 **`sch_simple.py` was not actually regenerable when this repo was first
 committed.** It pulled its symbol library in with
@@ -376,8 +386,31 @@ and diffing byte-for-byte against what was already committed: identical.
 `sch_inline.py` was left with its own inline copy rather than switched to
 import `symbols.py` too, since it already worked and didn't need touching.
 
-A `Makefile` in `schematics/` now runs the full `.py → .kicad_sch → .pdf/.svg`
-chain. It marks the `.kicad_sch` targets `.PRECIOUS` — without that, GNU
-Make treats a file that is a build product of one rule and only a
+A `Makefile` in `schematics/gen/` now runs the full `.py → .kicad_sch →
+.pdf/.svg` chain. It marks the `.kicad_sch` target `.PRECIOUS` — without
+that, GNU Make treats a file that is a build product of one rule and only a
 prerequisite of another as a disposable intermediate and deletes it after
 use, which would silently delete the tracked schematic.
+
+**`make check`** (same Makefile) runs `find_shorts.py`/`find_diagonals.py`/
+`find_crossings.py`/`find_body_crossings.py` — schematic-quality checkers
+that trace `sch.py`'s actual `wire()`/`place()` calls (via `_trace.py`,
+which monkeypatches both before importing `sch`) rather than re-parsing the
+`.kicad_sch` output, so they see exactly what the generator draws. Previously
+these were recreated from scratch each session (lost across context
+compactions); persisted here instead. One bug found while persisting them:
+the tracer recorded wire() calls' raw pre-snap arguments instead of the
+post-`_snap_pt()` coordinates actually drawn, producing false-positive
+"diagonal" reports for wires that render perfectly orthogonal - fixed by
+snapping inside the tracer the same way `wire()` does internally.
+
+**`sch_original.py`/`sch_inline.py` and their outputs were dropped once the
+symbol migration and layout cleanup on the chosen design were done.**
+`desk_original` was the stock desk's own wiring — fully described by §1/§2's
+measurements, so keeping a duplicate schematic added nothing. `desk_inline`
+was design 3.3 (README §3), a good design but over-complex, kept only for
+reference while 3.4 was still being finished; once 3.4 (this file) was
+settled, keeping a second maintained generator around had no further purpose.
+With only one sheet left, `sch_simple.py`/`desk_simple.*` were renamed to
+`sch.py`/`desk.*` — "simple" was only ever a name to distinguish it from the
+other two.

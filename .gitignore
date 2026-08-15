@@ -4,3 +4,6 @@
 *.kicad_prl
 *.kicad_pro
 fp-info-cache
+~*.lck
+__pycache__/
+.history/
