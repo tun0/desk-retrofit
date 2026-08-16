@@ -64,6 +64,12 @@ class Sym:
         # Kicad-placed power symbol; every GND/rail tap in this project
         # was silently floating on its own isolated net before this).
         self.power = power
+        # Empty by default (as this project always was, until PCB work
+        # started) - symbols.py sets this per symbol after construction
+        # (same pattern as the pins_by_unit patching further down this
+        # file), not as a constructor arg, since it's PCB metadata with
+        # nothing to do with drawing the schematic.
+        self.footprint = ""
 
     def offset(self, number):
         for pin in self.pins:
@@ -366,7 +372,7 @@ class Schematic:
     # -- placement ----------------------------------------------------------
     def place(self, sym, ref, value, x, y, ref_at=None, val_at=None,
               hide_ref=False, hide_val=False, mirror=None, angle=0, unit=1,
-              justify=None):
+              justify=None, footprint=None, on_board=True):
         """mirror: None, "x" (flip vertically) or "y" (flip horizontally) -
         lets a two-pin part be wired straight instead of routed back
         across itself when its fixed pin layout is backwards for a
@@ -376,7 +382,14 @@ class Schematic:
         need to run along the other axis at this spot. unit: for a
         genuinely multi-unit part (e.g. one logic package with several
         gates, each its own unit) - place() is called once per unit, all
-        sharing `ref`; single-unit parts never need to pass this."""
+        sharing `ref`; single-unit parts never need to pass this.
+        footprint: leave as None to use the symbol's own default (set on
+        the Sym/ImportedSym object, see symbols.py); pass a string to
+        override it for this instance only (e.g. a differently-sized
+        capacitor). on_board: False marks a part that exists in this
+        design but isn't actually populated on this board - the OEM leg/
+        handset hardware and the wall supply, all physically elsewhere -
+        so "Update PCB from Schematic" doesn't try to place it."""
         x, y = _snap(x), _snap(y)
         self.used[sym.name] = sym
         self.placed.setdefault(ref, {})[unit] = (sym, x, y, mirror, angle)
@@ -405,16 +418,18 @@ class Schematic:
         vf = FH if hide_val else \
             f"(effects (font (size 1.0 1.0)){just_clause})"
         mirror_clause = f" (mirror {mirror})" if mirror else ""
+        fp = sym.footprint if footprint is None else footprint
         b = [f'  (symbol (lib_id "L:{sym.name}") (at {x:.2f} {y:.2f} {angle})'
              f'{mirror_clause} '
              f"(unit {unit})",
-             "    (in_bom yes) (on_board yes) (dnp no)",
+             f"    (in_bom yes) (on_board {'yes' if on_board else 'no'})"
+             " (dnp no)",
              f'    (uuid "{uid("i")}")',
              f'    (property "Reference" "{esc(ref)}" '
              f"(at {rx:.2f} {ry:.2f} {text_angle}) {rf})",
              f'    (property "Value" "{esc(value)}" '
              f"(at {vx:.2f} {vy:.2f} {text_angle}) {vf})",
-             f'    (property "Footprint" "" (at {x:.2f} {y:.2f} 0) {FH})',
+             f'    (property "Footprint" "{esc(fp)}" (at {x:.2f} {y:.2f} 0) {FH})',
              f'    (property "Datasheet" "" (at {x:.2f} {y:.2f} 0) {FH})']
         unit_pins = getattr(sym, "pins_by_unit", {}).get(unit, sym.pins)
         for pin in unit_pins:

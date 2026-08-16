@@ -63,6 +63,14 @@ that file. Titles only, for a quick glance:
 
 - [x] ERC has never been run on any schematic. Run this session (task #11):
   127 violations, all triaged as documented gaps or convention artefacts.
-- [ ] Relay module active-high vs active-low polarity is unverified.
+- [x] Relay module active-high vs active-low polarity is unverified.
+  Moot - K1/K2 are bare relays with their coils driven directly by
+  Q2/Q3/D2/D6 (see NETLIST.md Drive section, README §6.3), not a
+  driver-included module with its own logic-level input. Boot-safe
+  behavior is by construction: R1/R2/R6 hold the AND-gate outputs low
+  at boot, which holds Q2/Q3 (logic-level N-channel) off, which holds
+  both coils de-energized - matching CLAUDE.md's "both relays off =
+  brake" boot-state invariant with nothing left to verify against an
+  external module's polarity.
 - [ ] `read_current_()` in `desk_cover.cpp` is a stub (IDF 4.x vs 5.x ADC call).
 - [ ] Phase 2 (position feedback, presets) not started.

@@ -379,7 +379,8 @@ for ref, gate_unit in (("Q2", 1), ("Q3", 2)):
     s.wire(ps, (DRAIN_X, ps[1] + 15))
     gnd_tap(DRAIN_X, ps[1] + 15)
 
-s.place(NMOS, "Q1", "IRLZ44N", Q1_X, Q1_Y)
+s.place(NMOS, "Q1", "IRLZ44N", Q1_X, Q1_Y,
+        footprint="Package_TO_SOT_THT:TO-220-3_Vertical")
 q1_drain, q1_source = s.pin("Q1", "2"), s.pin("Q1", "3")
 # Gate already wired to the Q4/Q5 push-pull output above.
 GND_GAP = 8.0
@@ -393,7 +394,8 @@ MRETX = 450.0
 # already in Q1's drain wire above, so it taps in with a junction
 # instead of its own separate run over.
 D5_GAP = 8.0
-s.place(DH, "D5", "SB560", DRAIN_X, q1_drain[1] - D5_GAP - 3.81, angle=270)
+s.place(DH, "D5", "SB560", DRAIN_X, q1_drain[1] - D5_GAP - 3.81, angle=270,
+        footprint="Diode_THT:D_DO-201AD_P12.70mm_Horizontal")
 d5_bottom = s.pin("D5", "2")
 s.wire(q1_drain, (DRAIN_X, d5_bottom[1]), (MRETX, d5_bottom[1]))
 s.junction(d5_bottom)
@@ -564,14 +566,16 @@ s.place(TVS, "D1", "33V bidir", D1X, SY + 6.35)
 s.wire(j2_vsw, s.pin("D1", "1"))
 
 C1X = D1X + GAP
-s.place(C_, "C1", "220u 50V", C1X, SY + 3.81)
+s.place(C_, "C1", "220u 50V", C1X, SY + 3.81,
+        footprint="Capacitor_THT:CP_Radial_D10.0mm_P5.00mm")
 
 U1X = C1X + GAP + 12.7  # VIN sits 12.7mm left of centre
 s.place(BUCK, "U1", "LM2596HV 29V-5V", U1X, SY + 2.54)
 fb_x = U1X + 12.7  # FB sits 12.7mm right of centre, same y as VIN
 
 C2X = fb_x + GAP
-s.place(C_, "C2", "220u 10V", C2X, SY + 3.81)
+s.place(C_, "C2", "220u 10V", C2X, SY + 3.81,
+        footprint="Capacitor_THT:CP_Radial_D8.0mm_P3.50mm")
 
 # Every ground drop in this section (GND_Y, set above with J2's own)
 # lands on the same row - still its own symbol per drop, not a shared
@@ -654,7 +658,7 @@ s.place(GNDS, _uref(), "GND", RX, gnd_y, hide_ref=True, hide_val=True)
 s.note("LEG (unmodified)", 358, 435, 2.8)
 s.box(358, 440, 475, 513)
 
-s.place(MOT, "M1", "2R5 winding", 366.08, 476)
+s.place(MOT, "M1", "2R5 winding", 366.08, 476, on_board=False)
 m1_plus, m1_minus = s.pin("M1", "1"), s.pin("M1", "2")
 
 # J1 - the far end of the board's TB1/TB2 pigtail (same Molex Mini-Fit
@@ -669,7 +673,7 @@ J1X, J1Y = 420.0, 476.0
 # lines now, and the default clearance was tuned for one, sitting right
 # against the body.
 s.place(CONN, "J1", "in motor housing\nmates with board pigtail (TB1/TB2)",
-        J1X, J1Y, val_at=(J1X, J1Y + 6.5))
+        J1X, J1Y, val_at=(J1X, J1Y + 6.5), on_board=False)
 j1_mota, j1_motb = s.pin("J1", "1"), s.pin("J1", "2")
 j1_vsw, j1_gnd = s.pin("J1", "3"), s.pin("J1", "4")
 
@@ -689,8 +693,9 @@ GAP = 12.0
 # row intersection is a real 3-way junction.
 OUTSET = 1.27
 
-s.place(LIM, "SW3", "top limit", SWX, m1_plus[1] - EXTRA)
-s.place(DH, "D3", "allows down", SWX, m1_plus[1] - EXTRA - GAP, mirror="y")
+s.place(LIM, "SW3", "top limit", SWX, m1_plus[1] - EXTRA, on_board=False)
+s.place(DH, "D3", "allows down", SWX, m1_plus[1] - EXTRA - GAP, mirror="y",
+        on_board=False)
 sw3_l, sw3_r = s.pin("SW3", "1"), s.pin("SW3", "2")
 d3_k, d3_a = s.pin("D3", "1"), s.pin("D3", "2")
 lbus, rbus = sw3_l[0] - OUTSET, sw3_r[0] + OUTSET
@@ -704,8 +709,9 @@ s.wire(sw3_rp, (rbus, d3_k[1]), d3_k)
 s.wire(sw3_rp, (j1_mota[0], sw3_r[1]), j1_mota)
 s.junction(sw3_rp)
 
-s.place(LIM, "SW4", "bottom limit", SWX, m1_minus[1] + EXTRA)
-s.place(DH, "D4", "allows up", SWX, m1_minus[1] + EXTRA + GAP, mirror="y")
+s.place(LIM, "SW4", "bottom limit", SWX, m1_minus[1] + EXTRA, on_board=False)
+s.place(DH, "D4", "allows up", SWX, m1_minus[1] + EXTRA + GAP, mirror="y",
+        on_board=False)
 sw4_l, sw4_r = s.pin("SW4", "1"), s.pin("SW4", "2")
 d4_k, d4_a = s.pin("D4", "1"), s.pin("D4", "2")
 sw4_lp, sw4_rp = (lbus, sw4_l[1]), (rbus, sw4_r[1])
@@ -723,7 +729,8 @@ s.junction(sw4_rp)
 # itself, nor j1_vsw's) since that's the one offset, still on-grid,
 # that actually lines the two bodies up.
 PSUX = j1_vsw[0] + 20
-s.place(PSU, "PSU1", "29V 1.8A 52W", PSUX, J1Y + 1.27, mirror="y")
+s.place(PSU, "PSU1", "29V 1.8A 52W", PSUX, J1Y + 1.27, mirror="y",
+        on_board=False)
 # Neither Vout pin lands on its own J1 pin's row (both are 1.27mm off,
 # in opposite directions) - each jog bends at the horizontal midpoint
 # between the two connectors instead of hugging one end, so both wires
@@ -771,8 +778,8 @@ SWY = 476.0
 s.note("HANDSET (unmodified)", 520, 435, 2.8)
 s.box(520, 440, 637, 513)
 
-s.place(ROCKER, "SW1", "DOWN rocker", DOWN_X, SWY)
-s.place(ROCKER, "SW2", "UP rocker", UP_X, SWY, mirror="y")
+s.place(ROCKER, "SW1", "DOWN rocker", DOWN_X, SWY, on_board=False)
+s.place(ROCKER, "SW2", "UP rocker", UP_X, SWY, mirror="y", on_board=False)
 down_a, down_com, down_c = s.pin("SW1", "1"), s.pin("SW1", "2"), s.pin("SW1", "3")
 up_a, up_com, up_c = s.pin("SW2", "1"), s.pin("SW2", "2"), s.pin("SW2", "3")
 s.wire(down_a, up_a)
@@ -782,7 +789,7 @@ J4X = UP_X + 45
 # val_at pushed further down than the library's own default (5.08), same
 # reasoning as J1 - two lines now, not one.
 s.place(CONN, "J4", "in handset\nmates with board pigtail (TB3/TB4)",
-        J4X, SWY, val_at=(J4X, SWY + 6.5))
+        J4X, SWY, val_at=(J4X, SWY + 6.5), on_board=False)
 j4_1, j4_2, j4_3, j4_4 = (s.pin("J4", str(n)) for n in (1, 2, 3, 4))
 
 # UP's COM is already adjacent to J4 - straight in, no jog needed.

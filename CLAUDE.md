@@ -117,8 +117,6 @@ Don't remove that line.
 
 - `read_current_()` in `desk_cover.cpp` is a stub. The ADC call differs
   between IDF 4.x and 5.x — that is the one place to adapt.
-- Relay module active-high vs active-low is unverified. Wrong polarity
-  energises both relays at boot.
 - Phase 2 (position feedback, presets) is not started. See README §8.
 
 ## Working style

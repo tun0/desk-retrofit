@@ -450,7 +450,7 @@ Rough EUR incl. BTW, Netherlands. Prices are budgeting figures, not quotes.
 | Item | Note | Cost |
 |---|---|---|
 | ESP32-S3-DevKitC | bare devkit, no display — see §5 | €5–15 |
-| 2-channel relay module | SRD-05VDC-SL-C or similar | €3–5 |
+| 2x SRD-05VDC-SL-C relay | bare relay, not a driver-included module — this design drives the coil directly, see NETLIST.md Drive section | €3–5 |
 | 2x 2N7000 MOSFET | relay coil drivers (Q2/Q3), TO-92 — through-hole | €1–2 |
 | IRLZ44N MOSFET | logic-level, 55V — see §6.2 | €1–2 |
 | BC337 + BC327 | discrete gate driver push-pull — see §6.2 | €1–2 |
@@ -502,17 +502,27 @@ discrete BC337/BC327 push-pull (not an IC — see `schematics/gen/symbols.py`),
 fed 5 V through the AND gate output. Avoid the ubiquitous IRF520 "MOSFET
 trigger" modules — that FET isn't logic-level at all.
 
-### 6.3 Relay module checklist
+### 6.3 K1/K2 are bare relays, not a driver-included module
 
-Arduino-kit relay modules are usually fine, but check:
+**This design drives the coil directly** (Q2/Q3 discrete transistor
+switches, D2/D6 flyback diodes — see NETLIST.md's Drive section), not
+through a prebuilt "2-channel relay module" board. Those Arduino-kit
+modules already include their own opto-isolated input, driver transistor
+and flyback diode, which would make Q2/Q3/D2/D6 redundant rather than
+complementary if one were used here — don't substitute one in without
+also removing this board's own driver circuit. What to check when buying
+the bare relay itself:
 
-- **Coil voltage** — 5 V or 12 V changes what the buck must produce.
+- **Coil voltage** — must be 5 V; this design's coil drive assumes it, and
+  a 12 V coil would draw roughly half the current for the same drive
+  voltage, undersaturating the relay.
 - **Contact rating** — typically 10 A 250 VAC / 10 A 30 VDC. Your 29 V is right
-  at that DC limit; acceptable only because contacts are cold-switched.
-- **Active high or low** — most modules are active-low, which inverts the boot
-  pull-down resistors into pull-ups. Getting this backwards energises both
-  relays at boot.
-- **JD-VCC jumper** — and whether coil current (~70 mA each) comes off your 5 V.
+  at that DC limit; acceptable only because contacts are cold-switched
+  (§Sequencing/hard invariants — relays only change state with the FET
+  off and current decayed).
+- **Pinout** — EN50005/"Form C" (the real Kicad symbol this design uses,
+  `Relay_SPDT`) is the common footprint for this class of relay; verify
+  before assuming a drop-in substitute matches pin-for-pin.
 
 ### 6.4 Connector parts (Mini-Fit Jr., 4 circuit dual row)
 
@@ -574,8 +584,10 @@ preserve that, not just match electrically. Substitution criterion is the
 | SB560 | DO-201AD axial |
 | TVS 33 V | `P6KE33CA` or `1.5KE33CA`, axial |
 | Coil flyback | `1N4148`, DO-35 |
+| SRD-05VDC-SL-C relay | bare relay, TO-5-ish THT (EN50005/Form C) |
+| LM2596HV buck | TO-220-5, bare chip — not a module |
 | ACS724 | Pololu carrier (0.1" holes) — the bare chip is SOIC-8 |
-| Buck / ESP32 / relays | modules with headers |
+| ESP32-S3-DevKitC | devkit module, socketed with 0.1" pin headers |
 
 The ACS724 is the one part where the **carrier**, rather than the chip, is
 what keeps the board through-hole — the bare `ACS724xLCTR-05AB` this design
@@ -708,7 +720,6 @@ already built.
 - The polarity convention at each limit (which probe orientation gave 0.6 V)
   was not written down. Two-minute remeasure, needed before wiring the relays
   so "up" is actually up.
-- Relay module active-high vs active-low — verify before first power-on.
 - Wire colour to circuit number is predicted but unconfirmed (§1.6), and is
   **not required** for the build — noted only for completeness.
 - Which of yellow / white is supply positive was never recorded. Also not

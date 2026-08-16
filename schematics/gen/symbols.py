@@ -59,12 +59,24 @@ RAILS = {}
 # body, with a 90 degree text-rotation our importer doesn't even read) -
 # not usable as a static default the way the relay/transistor parts'
 # were. Ref/value kept an equal distance from centre, on either side.
+# Standard 1/4W axial THT resistor - every R_ instance in this design
+# (100k/10k/4k7/1k/20k) is a small-signal or pull-up/pull-down value,
+# none of them power resistors needing a bigger body.
 R_ = import_symbol(f"{KICAD_SYMBOLS}/Device.kicad_sym", "R",
                    ref_dy=2.8, val_dy=-2.8, ref_dx=3.4, val_dx=3.4)
+R_.footprint = "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal"
+# Default is a small ceramic disc, matching C3 (2u2 timing cap) - C1/C2
+# are 220uF electrolytics and need a much bigger radial-can footprint,
+# overridden per instance in sch.py's own place() calls.
 C_ = import_symbol(f"{KICAD_SYMBOLS}/Device.kicad_sym", "C",
                    ref_dy=2.8, val_dy=-2.8, ref_dx=4.4, val_dx=4.4)
+C_.footprint = "Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm"
+# Default is small-signal DO-35 (1N4148), matching D2/D3/D4/D6 - D5
+# (SB560) is a bigger Schottky and needs DO-201AD, overridden per
+# instance in sch.py.
 DH = import_symbol(f"{KICAD_SYMBOLS}/Device.kicad_sym", "D",
                    ref_dy=4.4, val_dy=-4.4)
+DH.footprint = "Diode_THT:D_DO-35_SOD27_P7.62mm_Horizontal"
 # No generic bidirectional TVS symbol exists in this Kicad library
 # snapshot (only specific parts like TVS0500DRV) - kept hand-drawn.
 TVS = Sym("TVS", "D", [("1", "1", P, 0, 6.35, 270, 3.81),
@@ -73,11 +85,17 @@ TVS = Sym("TVS", "D", [("1", "1", P, 0, 6.35, 270, 3.81),
            poly([(-2.54, -0.5), (2.54, -0.5), (0, -3.4), (-2.54, -0.5)],
                 BGFILL)], ref_dy=2.2, val_dy=-2.2, ref_dx=4.4, val_dx=4.4,
           justify="left")
+# DO-15, matching the P6KE33CA/1.5KE33CA axial TVS parts README 6.5 names.
+TVS.footprint = "Diode_THT:D_DO-15_P10.16mm_Horizontal"
 # ref_dy/val_dy overridden to match the BJT parts' spacing exactly (1.27
 # to -1.27) - the library's own stored gap (1.905 to 0) is tighter, even
 # though the body is about the same size.
 NMOS = import_symbol(f"{KICAD_SYMBOLS}/Transistor_FET.kicad_sym",
                      "Q_NMOS_GDS", prefix="Q", ref_dy=1.27, val_dy=-1.27)
+# Default is TO-92, matching Q2/Q3 (2N7000) - Q1 (IRLZ44N) is TO-220 and
+# needs the bigger footprint, overridden per instance in sch.py.
+NMOS.footprint = "Package_TO_SOT_THT:TO-92_Inline"
+# M1 is the existing motor, not populated on this board.
 MOT = import_symbol(f"{KICAD_SYMBOLS}/Motor.kicad_sym", "Motor_DC",
                     prefix="M")
 # ref_dy/val_dy overridden: the library's stored gap (2.54 to -1.905,
@@ -100,6 +118,13 @@ ROCKER = import_symbol(f"{KICAD_SYMBOLS}/Switch.kicad_sym", "SW_Push_SPDT",
 # up matching what a connector-style part wants - nothing to override.
 RLY = import_symbol(f"{KICAD_SYMBOLS}/Relay.kicad_sym", "Relay_SPDT",
                     prefix="K")
+# Bare relay (this design drives the coil directly with Q2/Q3/D2/D6, not
+# through a driver-included module - see NETLIST.md), EN50005/"Form C"
+# pinout matching the real symbol. No exact Songle SRD-05VDC-SL-C
+# footprint in this Kicad snapshot; SANYOU's SRD-series is the closest
+# available Form-C match - verify pin spacing against the actual relay's
+# datasheet before fabrication, common clone relays vary slightly.
+RLY.footprint = "Relay_THT:Relay_SPDT_SANYOU_SRD_Series_Form_C"
 
 
 def box(name, prefix, left, right, w=25.4):
@@ -129,6 +154,11 @@ def box(name, prefix, left, right, w=25.4):
 # valid state) - both wired in sch.py.
 BUCK = import_symbol(f"{KICAD_SYMBOLS}/Regulator_Switching.kicad_sym",
                      "LM2596T-12", prefix="U")
+# Bare chip (TO-220-5), not a buck module - the real pinout wired here
+# (FB, ~ON/OFF) only exists on the bare part; a prebuilt module would
+# only expose VIN/VOUT/GND. README 6.5's "modules with headers" line
+# lumped this in with U2/relays incorrectly - fix that wording too.
+BUCK.footprint = "Package_TO_SOT_THT:TO-220-5_Vertical"
 # OUT (pin 2) is generically typed "output" in the library, not
 # "power_out" - accurate for an adjustable part where OUT could feed
 # anything, but this fixed-5V regulator's OUT *is* the +5V source, and
@@ -154,6 +184,12 @@ BUCK.pins_by_unit[1] = [
 # (github.com/espressif/kicad-libraries, CC-BY-SA 4.0) if the chip/pin
 # selection ever changes.
 MCU = import_symbol(ESPRESSIF_SYMBOLS, "ESP32-S3-DevKitC", prefix="U")
+# Genuinely a module (unlike BUCK/RLY - the whole point of this part is
+# the devkit board, not a bare chip), socketed rather than soldered
+# direct so it's removable. 44 pins, 2 rows of 22 - a generic dual-row
+# placeholder; the real DevKitC's row-to-row spacing varies by board
+# width and needs adjusting once the specific board is bought.
+MCU.footprint = "Connector_PinSocket_2.54mm:PinSocket_2x22_P2.54mm_Vertical"
 GPIO_PIN = {
     0: "31", 1: "41", 2: "40", 3: "13", 4: "4", 5: "5", 6: "6", 7: "7",
     8: "12", 9: "15", 10: "16", 11: "17", 12: "18", 13: "19", 14: "20",
@@ -194,6 +230,7 @@ MCU.pins_by_unit[1] = [
 # rendering puts a power-only unit's labels beside it, not above.
 MONO = import_symbol(f"{KICAD_SYMBOLS}/74xx.kicad_sym", "74LS123",
                      prefix="U", ref_dy=12.7, val_dy=10.16)
+MONO.footprint = "Package_DIP:DIP-16_W7.62mm"
 # Real part: 74LS08 (74HC08, used everywhere else in this design, isn't
 # in this Kicad library snapshot at all - 74LS08 is a pin-compatible
 # placeholder pending a real part decision, see TODO.md). Quad 2-input
@@ -202,6 +239,7 @@ MONO = import_symbol(f"{KICAD_SYMBOLS}/74xx.kicad_sym", "74LS123",
 # Ref/value both above the body, ref further out - see MONO's note.
 AND2 = import_symbol(f"{KICAD_SYMBOLS}/74xx.kicad_sym", "74LS08",
                      prefix="U", ref_dy=8.89, val_dy=6.35)
+AND2.footprint = "Package_DIP:DIP-14_W7.62mm"
 # Gate driver is discrete instead of an IC: a complementary BJT push-pull
 # (BC337 NPN + BC327 PNP, both on hand already) driven by the AND gate's
 # 5V output through a base resistor. Output swings ~0.6V (off, well under
@@ -217,8 +255,10 @@ AND2 = import_symbol(f"{KICAD_SYMBOLS}/74xx.kicad_sym", "74LS08",
 # instance's own Value to "BC337"/"BC327" wherever they're used.
 BJT_NPN = import_symbol(f"{KICAD_SYMBOLS}/Transistor_BJT.kicad_sym",
                         "Q_NPN_CBE", prefix="Q")
+BJT_NPN.footprint = "Package_TO_SOT_THT:TO-92_Inline"
 BJT_PNP = import_symbol(f"{KICAD_SYMBOLS}/Transistor_BJT.kicad_sym",
                         "Q_PNP_CBE", prefix="Q")
+BJT_PNP.footprint = "Package_TO_SOT_THT:TO-92_Inline"
 # Real part: ACS724xLCTR-05AB (ACS712xLCTR-05B is the base symbol it
 # `extends`, same "thin wrapper" pattern as 74HC123/BC337 - importing the
 # base gets the real pins/graphics; place() still sets the instance's own
@@ -239,6 +279,11 @@ BJT_PNP = import_symbol(f"{KICAD_SYMBOLS}/Transistor_BJT.kicad_sym",
 ACS = import_symbol(f"{KICAD_SYMBOLS}/Sensor_Current.kicad_sym",
                     "ACS712xLCTR-05B", prefix="U",
                     ref_dy=12.7, val_dy=10.16)
+# The bare chip is SOIC-8 (README 6.5) - not through-hole, so this is
+# actually the Pololu ACS724 carrier board, socketed like U2. 8 pins,
+# single row - a generic placeholder; verify against the carrier's own
+# hole spacing once it's in hand.
+ACS.footprint = "Connector_PinSocket_2.54mm:PinSocket_1x08_P2.54mm_Vertical"
 # Real part: Conn_02x02_Top_Bottom - closer to physical reality than a
 # single row (J2/J3 are both Molex Mini-Fit Jr, 4 circuit dual row, per
 # README 1.5). "Top_Bottom" numbers row-major (pins 1,2 = row 1; pins
@@ -262,6 +307,10 @@ CONN = import_symbol(f"{KICAD_SYMBOLS}/Connector_Generic.kicad_sym",
 # is what lets a terminal drop into an existing pair's wiring unchanged.
 TERM2 = import_symbol(f"{KICAD_SYMBOLS}/Connector.kicad_sym",
                       "Screw_Terminal_01x02", prefix="TB")
+# 5.00mm pitch - a common, easy-to-source real terminal block pitch,
+# unrelated to the symbol's own 2.54mm drawn pin spacing (schematic
+# layout only; footprint pads match symbol pins by number, not position).
+TERM2.footprint = "TerminalBlock:TerminalBlock_MaiXu_MX126-5.0-02P_1x02_P5.00mm"
 # Real part: HLK-30M05 is the base symbol HLK-30M24 (and every other
 # HLK-30Mxx voltage) `extends` - same pattern as 74HC123/BC337/LM2596HV.
 # No HLK part actually matches this desk's measured 29V/52W (every
