@@ -42,9 +42,10 @@ that file. Titles only, for a quick glance:
 - [x] 4. Note the through-hole constraint in the BOM. Done — `README.md`
   §6.5, adapted for parts that changed since HANDOFF was written (TC4427
   dropped, replaced by the already-through-hole discrete BC337/BC327).
-- [ ] 5. Record sourcing constraints (Netherlands) — README §6 has a
-  thinner sourcing note already; HANDOFF's fuller Digikey/Farnell-rejected,
-  Reichelt/TME/Opencircuit/Antratek breakdown isn't in it yet.
+- [x] 5. Record sourcing constraints (Netherlands). Done — `README.md`
+  §6.6 (Digikey/Farnell ruled out with reasons, two-order pattern,
+  Mouser left open, substitutes list). TC4427 substitute dropped, not
+  applicable since the driver is discrete BC337/BC327 now.
 - [x] 6. Pin down the current sensor specification. Already decided in the
   schematic, just not narrated where HANDOFF looked: `symbols.py` imports
   `ACS724xLCTR-05AB` for U5 (bidirectional, 5A range — exactly HANDOFF's

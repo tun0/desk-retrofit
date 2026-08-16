@@ -466,12 +466,8 @@ Rough EUR incl. BTW, Netherlands. Prices are budgeting figures, not quotes.
 | Protoboard, terminals, wire | | €10–15 |
 | **Total** | | **€30–105** |
 
-Phase 2 adds ~€15–25 for a VL53L1X carrier and bracket.
-
-Sourcing: TinyTronics (Ede) or Kiwi Electronics cover most of the list in one
-order. Reichelt is cheap for passives and jellybean logic. The INA240, if you
-go that route, likely needs Mouser/Farnell/Digikey — another point in favour of
-the ACS724.
+Phase 2 adds ~€15–25 for a VL53L1X carrier and bracket. Sourcing detail
+below (§6.6).
 
 ### 6.1 Voltage, not current, is the constraint
 
@@ -585,6 +581,33 @@ The ACS724 is the one part where the **carrier**, rather than the chip, is
 what keeps the board through-hole — the bare `ACS724xLCTR-05AB` this design
 uses (§4.4) is SOIC-8. If sourcing the bare chip instead, it needs a
 breakout, same trade-off the INA240 fallback (§4.4) already has.
+
+### 6.6 Sourcing (Netherlands)
+
+Ruled out, with reasons, so they are not re-evaluated:
+
+- **Digikey** — ~€25 shipping on small orders.
+- **Farnell** — €50 order minimum, even after a reduction.
+
+Working pattern is **two orders**:
+
+- **Jellybean components** — Reichelt (DE) or TME (PL). Both ship to NL for
+  single-digit shipping with no minimum. TME has the deeper catalogue.
+- **Modules** — TinyTronics (Ede), Kiwi Electronics, Opencircuit (Zaandam) or
+  Antratek. Kiwi and Antratek carry Pololu, which matters for the ACS724
+  carrier.
+
+**Mouser is being evaluated** as a possible single-order option — its
+European free-shipping threshold may be low enough to cover the whole BOM
+including the bare ACS724. Left open; not decided.
+
+Substitutes worth recording:
+
+- **IRLZ44N** → any 55–60 V logic-level N-channel in TO-220. Check **Qg and
+  VDSS**, not Vgs(th) — see §6.2.
+- **74HC08** → 74HC00 with inverted logic, or 74HC11 triple 3-input AND.
+- **ACS724 carrier** → 10 mΩ shunt + INA240, but INA240 is SOIC-8 and needs a
+  breakout, which fights the through-hole preference (§6.5).
 
 ---
 
