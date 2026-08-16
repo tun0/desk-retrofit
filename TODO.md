@@ -39,8 +39,9 @@ that file. Titles only, for a quick glance:
   proposal (not implemented, per HANDOFF's own instruction) in
   `APPENDIX.md` §1.6: a second, hardware-enforced ~30s continuous-run
   timeout.
-- [ ] 4. Note the through-hole constraint in the BOM — not yet in
-  `README.md` §6.
+- [x] 4. Note the through-hole constraint in the BOM. Done — `README.md`
+  §6.5, adapted for parts that changed since HANDOFF was written (TC4427
+  dropped, replaced by the already-through-hole discrete BC337/BC327).
 - [ ] 5. Record sourcing constraints (Netherlands) — README §6 has a
   thinner sourcing note already; HANDOFF's fuller Digikey/Farnell-rejected,
   Reichelt/TME/Opencircuit/Antratek breakdown isn't in it yet.

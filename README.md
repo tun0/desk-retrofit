@@ -562,6 +562,30 @@ above) that mates with the cable. One extra connection point per circuit
 versus terminating the Mini-Fit directly at the board edge, traded for
 never needing a crimp tool during board assembly or rework.
 
+### 6.5 This design is deliberately all through-hole
+
+Protoboard assembly, not a PCB house order — every substitution should
+preserve that, not just match electrically. Substitution criterion is the
+**package**, not just the part:
+
+| Part | Through-hole option |
+|---|---|
+| 74HC123 | `74HC123N` / `SN74HC123N`, DIP-16 |
+| 74HC08 | `SN74HC08N`, DIP-14 |
+| BC337 / BC327 | TO-92 (already through-hole) |
+| IRLZ44N | TO-220 |
+| 2N7000 | TO-92 |
+| SB560 | DO-201AD axial |
+| TVS 33 V | `P6KE33CA` or `1.5KE33CA`, axial |
+| Coil flyback | `1N4148`, DO-35 |
+| ACS724 | Pololu carrier (0.1" holes) — the bare chip is SOIC-8 |
+| Buck / ESP32 / relays | modules with headers |
+
+The ACS724 is the one part where the **carrier**, rather than the chip, is
+what keeps the board through-hole — the bare `ACS724xLCTR-05AB` this design
+uses (§4.4) is SOIC-8. If sourcing the bare chip instead, it needs a
+breakout, same trade-off the INA240 fallback (§4.4) already has.
+
 ---
 
 ## 7. Firmware
