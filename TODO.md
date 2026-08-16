@@ -35,7 +35,10 @@ that file. Titles only, for a quick glance:
   now `2N7000`; added the missing BOM row (README §6).
 - [x] 2. Record the 74HC122 investigation as a negative result. Done —
   `APPENDIX.md` §5.7.
-- [ ] 3. Propose a use for the spare half of the 74HC123
+- [x] 3. Propose a use for the spare half of the 74HC123. Written up as a
+  proposal (not implemented, per HANDOFF's own instruction) in
+  `APPENDIX.md` §1.6: a second, hardware-enforced ~30s continuous-run
+  timeout.
 - [ ] 4. Note the through-hole constraint in the BOM — not yet in
   `README.md` §6.
 - [ ] 5. Record sourcing constraints (Netherlands) — README §6 has a

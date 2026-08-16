@@ -80,6 +80,31 @@ Some of the perceived jolt on the stock desk was never electrical — spindle
 backlash and the columns taking up load contribute, and no amount of ramping
 removes that entirely.
 
+### 1.6 Proposal: spare 74HC123 channel as a second, hardware-enforced timeout
+
+**Not implemented — a design change, not a documentation fix. Needs
+discussion before it goes into the schematic.**
+
+U3 is dual (74HC123, §5.7) and only one channel is used, for the 250 ms
+watchdog. The spare channel could provide a second, independent timeout: a
+~30 s monostable retriggered by "any drive line active," hard-limiting how
+long the desk can run continuously.
+
+Why it would be worth doing: the travel timeout is currently a firmware
+property (`max_run_ms`), so it dies with the firmware — a hung or buggy
+control loop that keeps a drive line asserted has nothing hardware backing
+it up past the existing (much shorter) watchdog. Moving the *duty-cycle*
+limit into hardware makes maximum continuous run something the MCU cannot
+override, the same way the existing 74HC123 channel already makes the
+kick-or-stop behavior something the MCU cannot override. It would also
+enforce the manual's duty-cycle limit (§1 of the manual, README §1.1)
+against a firmware bug rather than only trusting firmware to enforce it.
+
+What would need deciding before wiring it in: what "any drive line active"
+should actually gate off if it trips (full stop, like the existing
+watchdog, or just inhibit further starts until it resets?), and whether 30
+s is the right figure against the manual's actual duty-cycle numbers.
+
 ---
 
 ## 2. Phase 2 — position sensing, full option analysis
