@@ -31,10 +31,10 @@ Working list of what's outstanding. Not a durable doc like `README.md` /
 Came out of a separate claude.ai session; ground rules and full detail are in
 that file. Titles only, for a quick glance:
 
-- [ ] 1. Replace 2N7002 with 2N7000 (through-hole) — Q2/Q3 still `2N7002`
-  in `sch.py`, still open.
-- [ ] 2. Record the 74HC122 investigation as a negative result — not yet
-  in `APPENDIX.md` §5.
+- [x] 1. Replace 2N7002 with 2N7000 (through-hole). Done — `sch.py` Q2/Q3
+  now `2N7000`; added the missing BOM row (README §6).
+- [x] 2. Record the 74HC122 investigation as a negative result. Done —
+  `APPENDIX.md` §5.7.
 - [ ] 3. Propose a use for the spare half of the 74HC123
 - [ ] 4. Note the through-hole constraint in the BOM — not yet in
   `README.md` §6.

@@ -251,6 +251,17 @@ ACS = import_symbol(f"{KICAD_SYMBOLS}/Sensor_Current.kicad_sym",
 # which this project deliberately doesn't rely on - see README 1.6).
 CONN = import_symbol(f"{KICAD_SYMBOLS}/Connector_Generic.kicad_sym",
                      "Conn_02x02_Top_Bottom", prefix="J")
+# The board-side Mini-Fits (formerly J2, J3) are dropped from this sheet
+# entirely - the board only ever solders to screw terminals (no crimp
+# tool needed for board assembly), and a short crimped pigtail, off-board,
+# carries each circuit on to the actual Mini-Fit pin. That pigtail/mating
+# detail belongs with the connector reference (README 1.5/1.6, NETLIST.md),
+# not duplicated as a second connector symbol here. CONN (J1, J4) still
+# stands for the real Mini-Fits at the far end, inside the motor housing/
+# handset. 2-position, 2.54mm pitch - same pitch as CONN's own pins, which
+# is what lets a terminal drop into an existing pair's wiring unchanged.
+TERM2 = import_symbol(f"{KICAD_SYMBOLS}/Connector.kicad_sym",
+                      "Screw_Terminal_01x02", prefix="TB")
 # Real part: HLK-30M05 is the base symbol HLK-30M24 (and every other
 # HLK-30Mxx voltage) `extends` - same pattern as 74HC123/BC337/LM2596HV.
 # No HLK part actually matches this desk's measured 29V/52W (every

@@ -12,7 +12,7 @@ import sys  # noqa: E402
 from symbols import (Schematic, GNDS, RAILS, _rail, R_, C_, DH,  # noqa: E402
                      TVS, NMOS, MOT, LIM, RLY, BUCK, MCU, GPIO_PIN,
                      MCU_5V, MCU_GND, MCU_3V3, MONO, AND2,
-                     BJT_NPN, BJT_PNP, ACS, CONN, PSU, AC_FLAG, ROCKER)
+                     BJT_NPN, BJT_PNP, ACS, CONN, PSU, AC_FLAG, ROCKER, TERM2)
 
 s = Schematic("desk", "Slangerup desk retrofit - in-line drive",
               "Box owns the winding; unplug it to revert", paper="A1")
@@ -118,28 +118,39 @@ for num in (PIN["ISENSE"], PIN["SDA"], PIN["SCL"]):
 # anywhere in this branch. Each branch gets its own column (390/400) so
 # the two 100k pull-ups' runs up to +3V3 don't share a column and short.
 NODEX = {PIN["SW_UP"]: 160.0, PIN["SW_DN"]: 170.0}
-# No y offset: J3's own row spacing (2.54mm) matches SW_UP/SW_DN's, so
-# pin 1 lands exactly on SW_UP's row and pin 2 exactly on SW_DN's - both
-# connections come in perfectly horizontal instead of a slight diagonal.
+# No y offset: TB3/TB4's own row spacing (2.54mm) matches SW_UP/SW_DN's,
+# so pin 1 lands exactly on SW_UP's row and pin 2 exactly on SW_DN's -
+# both connections come in perfectly horizontal instead of a slight
+# diagonal.
 j3_y = pins[PIN["SW_UP"]][1]
-s.place(CONN, "J3", "to handset, mates with J4", 205, j3_y)
-# Pins 1/2 (row 1) point left, toward the resistor dividers that already
-# live over there next to U2 - HND_A/HND_B go there. Pins 3/4 (row 2)
-# point right, so +3V3/GND tap off to J3's right instead (no README
-# circuit-number constraint for J3 like J2 has, so rows are assigned for
-# routing, not to match an external reference).
-for num, rs, jn in ((PIN["SW_UP"], "R11", "1"), (PIN["SW_DN"], "R14", "2")):
+# J3 (the board-side Mini-Fit to the handset) is dropped from this sheet
+# - see symbols.py. Two 2-position screw terminals (handset signal pair,
+# handset power pair) take its place, at the exact spot its two pin
+# columns used to occupy, so the rest of this section doesn't need to
+# change. TB3 pins point left toward the resistor dividers next to U2 -
+# HND_A/HND_B go there. TB4 pins point right, so +3V3/GND tap off to its
+# right instead (no README circuit-number constraint here like TB1/TB2
+# have, so sides are assigned for routing, not to match an external
+# reference).
+s.place(TERM2, "TB3", "signal pair", 204.14, j3_y - 0.33)
+# mirror="y": TB4's wire goes right (to +3V3/GND), not left - unmirrored,
+# its pins (and so its body) would sit on the wrong side, putting that
+# wire through TB4 itself instead of clear of it. Moved right of where
+# J3's own pin 3/4 column used to be, same reasoning as TB2.
+s.place(TERM2, "TB4", "power pair", 219.59, j3_y - 0.33, mirror="y")
+for num, rs, tref, jn in ((PIN["SW_UP"], "R11", "TB3", "1"),
+                          (PIN["SW_DN"], "R14", "TB3", "2")):
     p = pins[num]
     nx = NODEX[num]
     s.wire(p, (nx, p[1]))
     s.junction((nx, p[1]))
     s.place(R_, rs, "4k7", nx + 25, p[1], angle=90)
     s.wire((nx, p[1]), s.pin(rs, "1"))
-    # R14's own pin2 lands exactly on J3's pin here (25mm centres was
+    # R14's own pin2 lands exactly on TB3's pin here (25mm centres was
     # tuned for R11's own gap, not this one) - wire() itself drops a
     # zero-length segment like this rather than drawing an invisible
     # stub between two already-coincident points.
-    s.wire(s.pin(rs, "2"), s.pin("J3", jn))
+    s.wire(s.pin(rs, "2"), s.pin(tref, jn))
 
 # R13/R15 share R13's row (SW_UP's) instead of each sitting on its own
 # signal's row - SW_UP/SW_DN are only 2.54mm apart, so R15 at SW_DN's
@@ -158,16 +169,17 @@ for num, rp in ((PIN["SW_UP"], "R13"), (PIN["SW_DN"], "R15")):
         s.wire(rbot, (rbot[0], junc_y))
     s.junction((nx, junc_y))
 
-j3_3v3, j3_gnd = s.pin("J3", "3"), s.pin("J3", "4")
+j3_3v3, j3_gnd = s.pin("TB4", "1"), s.pin("TB4", "2")
 s.wire(j3_3v3, (j3_3v3[0] + 6, j3_3v3[1]))
 tap(j3_3v3[0] + 6, j3_3v3[1], V3)
 s.wire(j3_gnd, (j3_gnd[0] + 6, j3_gnd[1]))
 gnd_tap(j3_gnd[0] + 6, j3_gnd[1])
-# Centered under J3 (note() anchors text at its left edge, so offset by
-# half the estimated string width) and at SDA/SCL's row - it used to sit
-# off in open space near the MCU, too close to the GPIO34/37 pin labels.
+# Centered under TB3/TB4 (note() anchors text at its left edge, so offset
+# by half the estimated string width) and at SDA/SCL's row - it used to
+# sit off in open space near the MCU, too close to the GPIO34/37 pin
+# labels.
 NOTE_TEXT = "handset sees 3V3 only - 29V never reaches it"
-j3_cx = (s.pin("J3", "1")[0] + s.pin("J3", "3")[0]) / 2
+j3_cx = (s.pin("TB3", "1")[0] + s.pin("TB4", "1")[0]) / 2
 note_y = (pins[PIN["SDA"]][1] + pins[PIN["SCL"]][1]) / 2
 s.note(NOTE_TEXT, j3_cx - len(NOTE_TEXT) * 1.7 * 0.6 / 2, note_y, 1.7)
 
@@ -361,7 +373,7 @@ s.note("DRIVE", 395, 80, 2.8)
 # gate-to-transistor connection into one straight line.
 for ref, gate_unit in (("Q2", 1), ("Q3", 2)):
     pgy = s.pin("U6", GATE_PINS[gate_unit][2], unit=gate_unit)
-    s.place(NMOS, ref, "2N7002", DRAIN_X - NMOS_DX, pgy[1])
+    s.place(NMOS, ref, "2N7000", DRAIN_X - NMOS_DX, pgy[1])
     s.wire(pgy, s.pin(ref, "1"))
     ps = s.pin(ref, "3")
     s.wire(ps, (DRAIN_X, ps[1] + 15))
@@ -493,27 +505,31 @@ s.label("DRV_UP", COMX["K1"], pk1[1])
 ip_plus = s.pin("U5", "1")
 pk2 = (COMX["K2"], s.pin("K2", "11")[1])
 
-# J2 (to motor housing) sits above and to the right of U5 instead of
-# down with J3 or squeezed against K2 - plain, unrotated, pins facing
-# left toward the K1/K2/U5 cluster they connect to. Ample open space up
-# here, so MOT_A/MOT_B each get their own clear column on the way up
-# instead of fighting for room right next to the relays.
-J2X, J2Y = 560.0, 120.0
-s.place(CONN, "J2", "to motor housing, mates with J1", J2X, J2Y)
-# Pins 1/2 (row 1) = motor pair, 3/4 (row 2) = supply pair - matches
-# README 1.6/Molex's row-major numbering (see symbols.py), which is the
-# opposite of what this used to be. MOT_A/MOT_B order on pins 1/2 is
-# still provisional - MOT_A is defined by function (README 1.6:
-# whichever conductor raises the desk), so if bring-up shows this
-# backwards, the fix is relabelling here, not rewiring anything.
-# Pins 1/2 point left (toward K2/U5, already alongside); pins 3/4 point
-# right, so their taps sit on J2's right instead of looping back left.
-j2_mota, j2_motb = s.pin("J2", "1"), s.pin("J2", "2")
-j2_vsw, j2_gnd = s.pin("J2", "3"), s.pin("J2", "4")
+# J2 (the board-side Mini-Fit to the motor housing) is dropped from this
+# sheet - see symbols.py. In its place, two 2-position screw terminals
+# (motor pair, supply pair) are placed so their pins land exactly where
+# J2's own two pin columns used to be, so nothing downstream needs to
+# change: same reasoning J2 always had for sitting here (above and to
+# the right of U5, ample room, MOT_A/MOT_B each get their own column on
+# the way up).
+s.place(TERM2, "TB1", "motor pair", 559.74, 119.05)
+# mirror="y": TB2's wire goes right (into the SUPPLY chain), not left -
+# unmirrored, its pins (and so its body) would sit on the wrong side,
+# putting that wire through TB2 itself instead of clear of it. Moved
+# right of where J2's own pin 3/4 column used to be (12.7mm from TB1,
+# same as a single 2x2 connector's own column spacing) for clearance -
+# no longer one physical part, no reason to sit that close.
+s.place(TERM2, "TB2", "supply pair", 574.59, 119.05, mirror="y")
+# MOT_A/MOT_B order on pin 1/2 is still provisional - MOT_A is defined by
+# function (README 1.6: whichever conductor raises the desk), so if
+# bring-up shows this backwards, the fix is relabelling here, not
+# rewiring anything.
+j2_mota, j2_motb = s.pin("TB1", "1"), s.pin("TB1", "2")
+j2_vsw, j2_gnd = s.pin("TB2", "1"), s.pin("TB2", "2")
 s.wire(pk2, (pk2[0], j2_mota[1]), j2_mota)
 s.wire(ip_plus, (ip_plus[0], j2_motb[1]), j2_motb)
 # GND_Y (defined properly below, with the rest of SUPPLY's grounds) is
-# used here too so J2's own GND symbol lines up with that whole row
+# used here too so TB2's own GND symbol lines up with that whole row
 # instead of sitting at its own, different height.
 GND_Y = j2_vsw[1] + 16.0
 # Straight diagonal before (different x AND y, no bend) - now a proper
@@ -522,14 +538,14 @@ s.wire(j2_gnd, (j2_gnd[0] + 6, j2_gnd[1]), (j2_gnd[0] + 6, GND_Y))
 gnd_tap(j2_gnd[0] + 6, GND_Y)
 
 # ============================================================== supply ====
-# Moved here (next to J2) instead of its own block elsewhere on the
-# sheet, and wired to J2.3 with a literal wire instead of a same-named
+# Moved here (next to TB2) instead of its own block elsewhere on the
+# sheet, and wired to TB2.1 with a literal wire instead of a same-named
 # VSW tap - this is the actual, physical entry point for the incoming
 # supply, so drawing it as a real connection is more accurate than an
 # abstract label match (used everywhere else VSW is needed, which is
 # still the right call there - this is the one spot that's the source,
 # not just another consumer). One flattened chain, left to right, all on
-# the same rail y (J2.3's own height) so the whole 29V-to-5V path is a
+# the same rail y (TB2.1's own height) so the whole 29V-to-5V path is a
 # single straight line, no jogs. Horizontal spacing standardized to GAP
 # between facing pins (not component centres, which would leave visibly
 # uneven gaps given how much each part's own width differs).
@@ -641,14 +657,19 @@ s.box(358, 440, 475, 513)
 s.place(MOT, "M1", "2R5 winding", 366.08, 476)
 m1_plus, m1_minus = s.pin("M1", "1"), s.pin("M1", "2")
 
-# J1 - the mating half of J2 (same Molex Mini-Fit Jr, same
-# Conn_02x02_Top_Bottom part), sitting where it actually is: inside the
-# leg, wired straight to this section's own motor leads and to the PSU
-# below, instead of a same-named-label match to J2 that was never
-# actually connected to anything ("global" only means "matches by text
-# anywhere on THIS sheet" - see NETLIST.md, this is what fixes that).
+# J1 - the far end of the board's TB1/TB2 pigtail (same Molex Mini-Fit
+# Jr, same Conn_02x02_Top_Bottom part - see symbols.py, J2 itself is no
+# longer drawn), sitting where it actually is: inside the leg, wired
+# straight to this section's own motor leads and to the PSU below,
+# instead of a same-named-label match that was never actually connected
+# to anything ("global" only means "matches by text anywhere on THIS
+# sheet" - see NETLIST.md, this is what fixes that).
 J1X, J1Y = 420.0, 476.0
-s.place(CONN, "J1", "in motor housing, mates with J2", J1X, J1Y)
+# val_at pushed further down than the library's own default (5.08) - two
+# lines now, and the default clearance was tuned for one, sitting right
+# against the body.
+s.place(CONN, "J1", "in motor housing\nmates with board pigtail (TB1/TB2)",
+        J1X, J1Y, val_at=(J1X, J1Y + 6.5))
 j1_mota, j1_motb = s.pin("J1", "1"), s.pin("J1", "2")
 j1_vsw, j1_gnd = s.pin("J1", "3"), s.pin("J1", "4")
 
@@ -758,7 +779,10 @@ s.wire(down_a, up_a)
 s.wire(down_c, up_c)
 
 J4X = UP_X + 45
-s.place(CONN, "J4", "in handset, mates with J3", J4X, SWY)
+# val_at pushed further down than the library's own default (5.08), same
+# reasoning as J1 - two lines now, not one.
+s.place(CONN, "J4", "in handset\nmates with board pigtail (TB3/TB4)",
+        J4X, SWY, val_at=(J4X, SWY + 6.5))
 j4_1, j4_2, j4_3, j4_4 = (s.pin("J4", str(n)) for n in (1, 2, 3, 4))
 
 # UP's COM is already adjacent to J4 - straight in, no jog needed.

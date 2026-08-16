@@ -18,14 +18,15 @@ substitute for `sch.py`, which is the actual source of truth.
 | Ref | Value | Notes |
 |---|---|---|
 | PS1 | 29V 1.8A 52W (via motor housing) | wall supply, current-limiting |
-| F1 | 2A slow-blow | |
-| D1 | 33V bidir | TVS, input transient protection |
+| D1 | 33V bidir | TVS, input transient protection; no fuse fitted, see README 6.1 |
 | C1 | 220u 50V | input bulk cap |
 | U1 | LM2596HV 29V-5V | buck regulator; real part is base symbol LM2596T-12 (fixed-output LM2596T-5's own base), a pin-compatible non-HV placeholder, see TODO.md |
 | C2 | 220u 10V | +5V output cap |
-| J2 | to motor housing | 4-circuit: MOT_A, MOT_B, VSW, GND |
-| J3 | to handset | 4-circuit: HND_A, HND_B, +3V3, GND |
-| U2 | ESP32 + display | custom board, see README; real part is Espressif's ESP32-S3-DevKitC symbol (vendored, see Controller section) as a closer stand-in than anything in the local Kicad install |
+| TB1 | motor pair | 2-position screw terminal; board-side termination for MOT_A/MOT_B, pigtails to J1 via J2 (no longer drawn - see Connectors) |
+| TB2 | supply pair | 2-position screw terminal; board-side termination for VSW/GND, pigtails to J1 via J2 |
+| TB3 | signal pair | 2-position screw terminal; board-side termination for HND_A/HND_B, pigtails to J4 via J3 |
+| TB4 | power pair | 2-position screw terminal; board-side termination for +3V3/GND, pigtails to J4 via J3 |
+| U2 | ESP32 | bare devkit, no display - see README 5/6; real part is Espressif's ESP32-S3-DevKitC symbol (vendored, see Controller section) as the closest local match |
 | R11 | 4k7 | HND_A series resistor (rocker divider) |
 | R13 | 100k | SW_UP pull-up to +3V3 |
 | R14 | 4k7 | HND_B series resistor (rocker divider) |
@@ -40,14 +41,14 @@ substitute for `sch.py`, which is the actual source of truth.
 | Q4 | BC337 | gate driver for Q1, NPN half of a discrete push-pull (replaces a TC4427 IC) |
 | Q5 | BC327 | gate driver for Q1, PNP half of the push-pull |
 | R7 | 1k | Q4/Q5 base resistor |
-| Q1 | IRLB8721 | main PWM FET, low side |
+| Q1 | IRLZ44N | main PWM FET, low side |
 | D5 | SB560 | freewheel diode |
 | K1 | energized = UP (raises desk) | relay, real part Relay_SPDT (EN50005 pinout) |
 | K2 | energized = DOWN (lowers desk) | relay, same part as K1 |
 | D2 | flyback | K1 coil flyback diode |
 | D6 | flyback | K2 coil flyback diode |
-| Q2 | 2N7002 | K1 coil driver |
-| Q3 | 2N7002 | K2 coil driver |
+| Q2 | 2N7000 | K1 coil driver |
+| Q3 | 2N7000 | K2 coil driver |
 | U5 | ACS724xLCTR-05AB | current sensor, in series with K1's leg; real part is base symbol ACS712xLCTR-05B, same "extends" pattern as 74HC123/BC337 |
 | R4 | 10k | ISENSE divider, top |
 | R5 | 20k | ISENSE divider, bottom |
@@ -66,49 +67,71 @@ GND/rail symbols are flagged as Kicad power symbols (`(power global)`); see
 against Kicad's own netlist export, which merges them into one named net
 each:
 
-- **VSW**: C1.1, D1.1, D5.1, F1.2, J2.3, K1.12, K2.12, U1.1 — the raw supply
-  rail, straight off the fuse, before the buck regulator
-- **+5V**: C2.1, D2.1, D6.1, K1.A1, K2.A1, Q4.1, R3.1, U1.2, U1.4, U2.21,
+- **VSW**: D5.1, K1.12, K2.12 — the raw supply rail via the two relays' NC
+  contacts and D5's anode. TB2/D1/C1/U1.1 sit on a separate, unnamed net
+  (same potential, reached only through the literal-wire chain below, not
+  through a VSW-flagged tap) - see Supply.
+- **+5V**: C2.1, D2.1, D6.1, K1.A2, K2.A2, Q4.1, R3.1, U1.2, U1.4, U2.21,
   U3.16, U3.2, U3.3, U5.8, U6.14 — regulated 5V, from U1's OUT (pin 2) and
   FB (pin 4, tied to OUT - see Drive/Supply below)
-- **+3V3**: J3.3, R13.1, R15.1, U2.1, U2.2 — from the ESP32 board's own
+- **+3V3**: R13.1, R15.1, TB4.1, U2.1, U2.2 — from the ESP32 board's own
   regulator (real part has two physical 3V3 pins, merged onto one net by
   Kicad's power-symbol matching even though only pin 1 is wired), not
-  generated on this board; only fed out to the handset (J3) and the
-  rocker pull-ups
-- **GND**: C1.2, C2.2, C3.2, D1.2, J2.4, J3.4, PS1.2, Q1.3, Q2.3, Q3.3, Q5.1,
-  R1.2, R2.2, R5.1, R6.2, U1.3, U1.5, U2.22, U3.8, U5.5, U6.7
+  generated on this board; only fed out to the handset (via TB4/J3/J4) and
+  the rocker pull-ups
+- **GND**: C1.2, C2.2, C3.1, D1.2, PS1.2, Q1.3, Q2.3, Q3.3, Q5.1, R1.2, R2.2,
+  R5.2, R6.2, TB2.2, TB4.2, U1.3, U1.5, U2.22, U2.23, U2.24, U2.44, U3.8,
+  U5.5, U6.7
 
 ## Connectors
 
-Both are Molex Mini-Fit Jr, 4 circuit dual row (README 1.5). Real part:
-Kicad's `Conn_02x02_Top_Bottom` - row-major numbering (pins 1,2 = row 1;
-pins 3,4 = row 2), confirmed against Molex's own 5557-series sales drawing
-(SD-5557-003).
+The board itself no longer carries a Mini-Fit Jr connector at all - see
+"screw terminals" below. J1/J4 remain: both Molex Mini-Fit Jr, 4 circuit
+dual row (README 1.5). Real part: Kicad's `Conn_02x02_Top_Bottom` -
+row-major numbering (pins 1,2 = row 1; pins 3,4 = row 2), confirmed against
+Molex's own 5557-series sales drawing (SD-5557-003).
 
-- **J2** (to motor housing): 1=`MOT_A`, 2=`MOT_B` (also U5.1, U5.2 - IP+,
-  both leads), 3=`VSW`, 4=GND (also K2.11 on pin 1). This matches README
-  1.6's circuit numbering (motor pair = circuits 1/2, supply pair =
-  circuits 3/4) - it didn't before this pass; the pins were previously
-  swapped relative to §1.6. Which of MOT_A/MOT_B sits on pin 1 vs 2 is
-  still provisional - MOT_A is defined by function (§1.6: whichever
-  conductor raises the desk), not by a fixed pin, so if bring-up shows
-  this backwards, relabel here rather than rewire. **Not actually merged
-  into the same Kicad net as the `MOT_A`/`MOT_B` glabels in the LEG
-  section below** - see the note at the end of this document.
-- **J3** (to handset): 1=`HND_A` (also R11.2), 2=`HND_B` (also R14.2),
-  3=`+3V3`, 4=GND. No README-documented circuit numbering exists for J3
-  (unlike J2) - this assignment is for routing convenience only.
+- **J1** (in motor housing): the actual mating half for the motor housing
+  cable. Wired directly to the LEG section's own motor leads and to PS1,
+  not to a same-named-label match - see the note at the end of this
+  document. Mates with a short pigtail off TB1/TB2 (see below), not with a
+  second Mini-Fit drawn on this sheet.
+- **J4** (in handset): the actual mating half for the handset cable, wired
+  directly to SW1/SW2. Mates with a short pigtail off TB3/TB4.
 
-## Controller (U2 = ESP32 + display)
+## Screw terminals (board-side termination)
+
+TB1-TB4 replace what used to be two board-side Mini-Fit Jr connectors
+(J2, J3) - the board now only ever solders to a screw terminal (no crimp
+tool needed for board assembly); a short crimped pigtail, off-board,
+carries each circuit on from there to J1/J4's actual Mini-Fit pins. Real
+part: Kicad's `Screw_Terminal_01x02`, 2-position, 2.54mm pitch.
+
+- **TB1** (motor pair): 1=`MOT_A`, 2=`MOT_B` (also U5.1, U5.2 - IP+, both
+  leads; K2.11 on pin 1). Circuit numbering here still matches what the
+  former J2 used (README 1.6: motor pair = circuits 1/2). Which of
+  MOT_A/MOT_B sits on pin 1 vs 2 is still provisional - MOT_A is defined
+  by function (§1.6: whichever conductor raises the desk), not by a fixed
+  pin, so if bring-up shows this backwards, relabel here rather than
+  rewire.
+- **TB2** (supply pair): 1=the unnamed VSW-potential net (see Power), 2=GND.
+  Mirrored (pins face right, toward the SUPPLY chain) rather than left
+  (toward TB1) - see `sch.py`.
+- **TB3** (signal pair): 1=`HND_A` (also R11.2), 2=`HND_B` (also R14.2). No
+  README-documented circuit numbering exists here (unlike TB1) - this
+  assignment is for routing convenience only.
+- **TB4** (power pair): 1=`+3V3`, 2=GND. Mirrored, same reasoning as TB2.
+
+## Controller (U2 = ESP32)
 
 Real part: Kicad's `ESP32-S3-DevKitC` (github.com/espressif/kicad-libraries,
 CC-BY-SA 4.0 - vendored in `espressif.kicad_sym`, not part of the local Kicad
-install). U2 is a generic "ESP32 devkit + display" (README 6, a "CYD"), not
-literally this board, but it's the closest real symbol available: bare
-GPIO-numbered pins, matching how this design already refers to every signal,
-unlike `Arduino_Nano_ESP32` (whose exposed pins don't even overlap with the
-GPIOs this design uses).
+install). Bare devkit, no display - this hardware lives under the desk, not
+somewhere a display is ever seen (README 5); a display, if ever added, would
+be a separate on-desk peripheral. Chosen over `Arduino_Nano_ESP32` for its
+bare GPIO-numbered pins, matching how this design already refers to every
+signal (the Nano's exposed pins don't even overlap with the GPIOs this
+design uses).
 
 GPIO choice was picked for schematic-wiring simplicity, not final PCB
 routing - expect this table to change once routing is considered. Only
@@ -122,7 +145,7 @@ unlike the classic ESP32, but ADC1 is still simpler).
 |---|---|---|---|
 | 21 | (5V) | +5V | supply |
 | 22 | (GND) | GND | ground (1 of 4 GND pins, only this one wired) |
-| 1/2 | (3V3) | +3V3 | source for J3 handset feed (2 physical pins, 1 wired, merged by Kicad's power matching) |
+| 1/2 | (3V3) | +3V3 | source for TB4/handset feed (2 physical pins, 1 wired, merged by Kicad's power matching) |
 | 10 | GPIO17 | DIR_A | R1.1, U6.2 (gate A input) |
 | 11 | GPIO18 | DIR_B | R2.1, U6.5 (gate B input) |
 | 27 | GPIO21 | PWM | R6.1, U6.10 (gate C input) |
@@ -178,22 +201,24 @@ low (drive lines safe) before the MCU boots.
   TC4427 driver IC, see README/APPENDIX for why): bases tied together ←
   U6 gate-3 output (pin 8) through R7 (1k); emitters tied together →
   **Q1.1** (gate). Q4 collector → +5V; Q5 collector → GND.
-- **Q1** (IRLB8721, main PWM FET): gate ← Q4/Q5 emitters; source → GND;
+- **Q1** (IRLZ44N, main PWM FET): gate ← Q4/Q5 emitters; source → GND;
   drain (`MRET`) → K1.14, K2.14, D5.2.
 - **D5** (SB560, freewheel): K → `MRET`; A → `VSW`.
-- **Q2** (2N7002): gate ← U6 unit-1 output (pin 3); drain → K1's coil
-  (`A2`/D2 node); source → GND.
-- **Q3** (2N7002): gate ← U6 unit-2 output (pin 6); drain → K2's coil
-  (`A2`/D6 node); source → GND.
-- **K1** (relay, UP): coil A1 → +5V, coil A2 → Q2 drain + D2 cathode (D2
-  anode → +5V, flyback). Contacts: 12 (NC) → `VSW`; 14 (NO) → `MRET`; 11
-  (COM) → `DRV_UP` net → U5 pin 3 (IP-).
+- **Q2** (2N7000): gate ← U6 unit-1 output (pin 3); drain → K1's coil
+  (`A1`/D2 node); source → GND.
+- **Q3** (2N7000): gate ← U6 unit-2 output (pin 6); drain → K2's coil
+  (`A1`/D6 node); source → GND.
+- **K1** (relay, UP): coil A2 → +5V, coil A1 → Q2 drain + D2 cathode (D2
+  anode → +5V, flyback) - A1/A2's roles swapped from a pre-rotation
+  layout (`sch.py`'s own history); the schematic is correct, this doc
+  wasn't. Contacts: 12 (NC) → `VSW`; 14 (NO) → `MRET`; 11 (COM) →
+  `DRV_UP` net → U5 pin 3 (IP-).
 - **K2** (relay, DOWN): same pattern - coil via Q3/D6; 12 (NC) → `VSW`; 14
-  (NO) → `MRET`; 11 (COM) → J2 pin 1 (`MOT_A`, straight to the motor
-  housing connector).
+  (NO) → `MRET`; 11 (COM) → TB1 pin 1 (`MOT_A`, pigtails on to the motor
+  housing connector J1).
 - **U5** (ACS724xLCTR-05AB, current sensor): VCC (pin 8)/GND (pin 5) →
   +5V/GND. IP- (pin 3, both leads) ← K1.11 (`DRV_UP`). IP+ (pin 1, both
-  leads) → J2 pin 2 (`MOT_B`) — U5 sits in series in K1's leg only; K2's
+  leads) → TB1 pin 2 (`MOT_B`) — U5 sits in series in K1's leg only; K2's
   leg (`MOT_A`) bypasses it directly. Which of IP+/IP- faces which side
   is arbitrary (README 4.4 - either leg works, direction isn't used) and
   was picked for routing. VIOUT (pin 7) → R4.1. FILTER (pin 6) is
@@ -214,12 +239,13 @@ the `MOT_A` side; D4: pin 1 on the `MOT_B` side) — that's the "allows
 down"/"allows up" direction difference, not a mistake.
 
 This section is physically inside the motor housing/leg and reached only via
-J2 — it's the same hardware as the stock desk, unmodified.
+J1 (which pigtails on to TB1/TB2 on the board) — it's the same hardware as
+the stock desk, unmodified.
 
 **Previously found here, since fixed:** `MOT_A`/`MOT_B` used to be global
-labels placed only in this section, far from J2, which meant they never
-actually merged with J2's own pins 1/2 in Kicad's netlist (global labels
-merge by matching text anywhere on the sheet, and J2.1/J2.2 carried no such
-label). Fixed by adding `J1` — the actual mating half of J2, wired straight
-to this section's motor leads instead of relying on label-matching. See
-`sch.py`.
+labels placed only in this section, far from the board-side connector, which
+meant they never actually merged with that connector's own pins in Kicad's
+netlist (global labels merge by matching text anywhere on the sheet, and
+those pins carried no such label). Fixed by adding `J1` — the actual mating
+half, wired straight to this section's motor leads instead of relying on
+label-matching. See `sch.py`.

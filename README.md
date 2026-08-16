@@ -451,15 +451,18 @@ Rough EUR incl. BTW, Netherlands. Prices are budgeting figures, not quotes.
 |---|---|---|
 | ESP32-S3-DevKitC | bare devkit, no display — see §5 | €5–15 |
 | 2-channel relay module | SRD-05VDC-SL-C or similar | €3–5 |
+| 2x 2N7000 MOSFET | relay coil drivers (Q2/Q3), TO-92 — through-hole | €1–2 |
 | IRLZ44N MOSFET | logic-level, 55V — see §6.2 | €1–2 |
 | BC337 + BC327 | discrete gate driver push-pull — see §6.2 | €1–2 |
 | 74HC123 + 74HC08 | watchdog and gating | €1–3 |
 | SB560 Schottky | freewheel | <€1 |
+| 2x 1N4148 | relay coil flyback diodes (D2/D6), DO-35 | <€1 |
 | ACS724-5AB carrier | bidirectional, 5A — see §4.4; or 10 mΩ shunt + INA240, ~€8 less | €12–18 |
 | LM2596HV buck | **must** be rated >40 V in | €4–8 |
-| Fuse, holder, TVS | 2–2.5 A slow-blow | €3–6 |
+| TVS 33 V bidirectional | D1 — no fuse fitted, see §6.1 | <€1 |
 | Passives | resistors, caps | €4–8 |
-| Mini-Fit Jr. housings + terminals | see §6.4 | €3–6 |
+| 4x 2-position screw terminal | 2.54mm pitch, board-side termination (TB1-TB4) — see §6.4 | €2–4 |
+| Mini-Fit Jr. housings + terminals | 2 mating pairs, each now on a short pigtail off the board rather than a board-mount connector — see §6.4 | €3–6 |
 | Protoboard, terminals, wire | | €10–15 |
 | **Total** | | **€30–105** |
 
@@ -478,6 +481,13 @@ buck input needs headroom above that. Common traps:
 - BTS7960 / IBT-2: spec'd 5.5–27.5 V. Out of spec.
 - VNH5019: 5.5–24 V. Out of spec.
 - MP1584 / Mini-360 buck modules: top out ~28 V. Marginal at best.
+
+No fuse is fitted (there was one in early drafts, `F1`). The wall supply
+already current-limits at 1.8 A — that limit is this design's only collision
+protection, already relied on elsewhere (§4.4, `CLAUDE.md`'s own hard
+invariants) — so a fuse adds little on top of it while being one more
+embedded part to replace if it ever blows. The OEM desk never had one
+either. D1 (33 V bidirectional TVS) stays.
 
 ### 6.2 Q1: voltage rating first, then the gate driver
 
@@ -541,6 +551,16 @@ round trip either way.
 
 Build any extension by **matching wire colours end to end** rather than
 trusting circuit numbering. One reversed pair swaps the rails.
+
+**The board itself doesn't carry a Mini-Fit connector at all.** Each side
+(motor housing, handset) terminates on the board in a 2-position screw
+terminal instead (TB1-TB4 — 2.54mm pitch, solders straight onto perfboard,
+no crimp tool needed for board assembly). A short pigtail, crimped
+separately on the bench, carries each pair from its screw terminal to the
+actual Mini-Fit half (still needed, still built exactly as described
+above) that mates with the cable. One extra connection point per circuit
+versus terminating the Mini-Fit directly at the board edge, traded for
+never needing a crimp tool during board assembly or rework.
 
 ---
 

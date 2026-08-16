@@ -303,6 +303,27 @@ poles carry full motor current in OEM mode and must be rated accordingly,
 while a watchdog trip is self-safe because the FET turns off in microseconds
 and the relays take milliseconds to release.
 
+### 5.7 74HC122 for the watchdog, instead of 74HC123
+
+Functionally the better fit: a single-channel retriggerable monostable with
+overriding clear, and its internal 10k timing resistor would eliminate R3,
+leaving only C3. Considered as a replacement for the dual 74HC123 U3 uses
+(only one of its two channels is populated).
+
+**Discontinued in the HC family.** Searches for an HC122 datasheet return the
+HC123 instead, and no current NXP or TI HC122 part page exists. The '122
+survives as 74LS122 only, and dragging a TTL part into an otherwise HC design
+buys nothing. Retaining 74HC123, recorded here so the question is not
+reopened and re-researched later.
+
+**CD4538** (dual precision retriggerable monostable) is worth noting as the
+alternative if timing tolerance ever matters — the HC123's timing spread is
+famously loose. It does not matter for a 250 ms watchdog, which only needs to
+sit comfortably above the 50 ms kick interval and below "dangerous".
+
+**74x121 and 74x221 will not work** for this — both are non-retriggerable
+one-shots, and the watchdog's whole point is retriggering on every kick.
+
 ---
 
 ## 6. Evidence worth capturing

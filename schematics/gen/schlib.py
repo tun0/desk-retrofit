@@ -19,7 +19,12 @@ def uid(tag=""):
 
 
 def esc(s):
-    return str(s).replace("\\", "\\\\").replace('"', '\\"')
+    # Backslash/quote first, then newline - in that order, so a literal
+    # newline in the input always ends up as the two-char "\n" escape
+    # Kicad renders as a line break, never doubled into "\\n" by the
+    # backslash step that already ran.
+    s = str(s).replace("\\", "\\\\").replace('"', '\\"')
+    return s.replace("\n", "\\n")
 
 
 F = "(effects (font (size 1.27 1.27)))"
