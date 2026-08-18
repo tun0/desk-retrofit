@@ -92,9 +92,14 @@ TVS.footprint = "Diode_THT:D_DO-15_P10.16mm_Horizontal"
 # though the body is about the same size.
 NMOS = import_symbol(f"{KICAD_SYMBOLS}/Transistor_FET.kicad_sym",
                      "Q_NMOS_GDS", prefix="Q", ref_dy=1.27, val_dy=-1.27)
-# Default is TO-92, matching Q2/Q3 (2N7000) - Q1 (IRLZ44N) is TO-220 and
-# needs the bigger footprint, overridden per instance in sch.py.
-NMOS.footprint = "Package_TO_SOT_THT:TO-92_Inline"
+# Default is TO-92 with leads spread to 2.54mm pitch (not the native
+# 1.27mm), matching Q2/Q3 (2N7000) - standard practice for hand assembly,
+# and it's what a 0.4mm home-fab clearance rule needs: at native pitch
+# the 3 legs sit too close together for that clearance, since all 3 are
+# on different nets. Also matches standard perfboard hole spacing, which
+# 1.27mm pitch wouldn't. Q1 (IRLZ44N) is TO-220 and needs the bigger
+# footprint, overridden per instance in sch.py.
+NMOS.footprint = "Package_TO_SOT_THT:TO-92_Wide"
 # M1 is the existing motor, not populated on this board.
 MOT = import_symbol(f"{KICAD_SYMBOLS}/Motor.kicad_sym", "Motor_DC",
                     prefix="M")
@@ -119,12 +124,21 @@ ROCKER = import_symbol(f"{KICAD_SYMBOLS}/Switch.kicad_sym", "SW_Push_SPDT",
 RLY = import_symbol(f"{KICAD_SYMBOLS}/Relay.kicad_sym", "Relay_SPDT",
                     prefix="K")
 # Bare relay (this design drives the coil directly with Q2/Q3/D2/D6, not
-# through a driver-included module - see NETLIST.md), EN50005/"Form C"
-# pinout matching the real symbol. No exact Songle SRD-05VDC-SL-C
-# footprint in this Kicad snapshot; SANYOU's SRD-series is the closest
-# available Form-C match - verify pin spacing against the actual relay's
-# datasheet before fabrication, common clone relays vary slightly.
-RLY.footprint = "Relay_THT:Relay_SPDT_SANYOU_SRD_Series_Form_C"
+# through a driver-included module - see NETLIST.md). Switched from the
+# Songle SRD-05VDC-SL-C originally specced to the Hongfa JQC-3FF/005-1ZS
+# (same "subminiature 1 Form C, 5V/10A PCB relay" class, extremely common,
+# in stock at LCSC) specifically because this footprint's pad names are
+# "11"/"12"/"14"/"A1"/"A2" - the SAME names as this generic Relay_SPDT
+# symbol's pins, not renumbered "1".."5" like the SANYOU footprint was.
+# That renumbering is what caused K1/K2 to import with zero net
+# assignment on the PCB (pin "A1" had no matching pad named "A1") without
+# ever throwing a visible error - a silent gap found only by noticing the
+# PCB pads still read netcode 0 after everything else routed. 11/12/14
+# is the standard DIN SPDT relay numbering (common/NC/NO) essentially
+# every manufacturer of this relay style follows, so pin-number matching
+# between symbol and footprint is trustworthy here, unlike guessing NC
+# vs NO from a datasheet picture.
+RLY.footprint = "Relay_THT:Relay_SPDT_Hongfa_JQC-3FF_0XX-1Z"
 
 
 def box(name, prefix, left, right, w=25.4):
@@ -255,10 +269,10 @@ AND2.footprint = "Package_DIP:DIP-14_W7.62mm"
 # instance's own Value to "BC337"/"BC327" wherever they're used.
 BJT_NPN = import_symbol(f"{KICAD_SYMBOLS}/Transistor_BJT.kicad_sym",
                         "Q_NPN_CBE", prefix="Q")
-BJT_NPN.footprint = "Package_TO_SOT_THT:TO-92_Inline"
+BJT_NPN.footprint = "Package_TO_SOT_THT:TO-92_Wide"
 BJT_PNP = import_symbol(f"{KICAD_SYMBOLS}/Transistor_BJT.kicad_sym",
                         "Q_PNP_CBE", prefix="Q")
-BJT_PNP.footprint = "Package_TO_SOT_THT:TO-92_Inline"
+BJT_PNP.footprint = "Package_TO_SOT_THT:TO-92_Wide"
 # Real part: ACS724xLCTR-05AB (ACS712xLCTR-05B is the base symbol it
 # `extends`, same "thin wrapper" pattern as 74HC123/BC337 - importing the
 # base gets the real pins/graphics; place() still sets the instance's own
@@ -311,6 +325,29 @@ TERM2 = import_symbol(f"{KICAD_SYMBOLS}/Connector.kicad_sym",
 # unrelated to the symbol's own 2.54mm drawn pin spacing (schematic
 # layout only; footprint pads match symbol pins by number, not position).
 TERM2.footprint = "TerminalBlock:TerminalBlock_MaiXu_MX126-5.0-02P_1x02_P5.00mm"
+# U2's 2x22 header is a genuine copper-layer capacity wall: every
+# crossing point between its margin and the rest of the board is used
+# up by other nets, and even a connector placed right at U2 doesn't
+# help - its body doesn't fit what little margin is left, and per-signal
+# jumpers there still fought the same congestion piecemeal (see
+# conversation - that attempt got messy: some signals on direct PCB
+# copper, some on pigtails, wires crossing body outlines). Cleaner fix:
+# U2 isn't on this board at all (`on_board=False` below, same mechanism
+# already used for the motor/handset/PSU) - it lives elsewhere as a
+# free-standing DevKitC, and EVERY signal it needs crosses on a
+# hand-soldered wire into one of three small JST-XH connectors, grouped
+# by function so there's one plug for power, one for the four drive
+# outputs, one for the two rocker inputs + current sense - matching
+# "plenty of JST plugs, one set for each of power/handset input/driver
+# output" from conversation. 2.50mm pitch is JST's own native pitch,
+# not a match to this board's 2.54mm grid; the ~0.04mm per pin
+# accumulated error is irrelevant at 3-4 pins.
+JP3 = import_symbol(f"{KICAD_SYMBOLS}/Connector_Generic.kicad_sym",
+                    "Conn_01x03", prefix="JP")
+JP3.footprint = "Connector_JST:JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical"
+JP4 = import_symbol(f"{KICAD_SYMBOLS}/Connector_Generic.kicad_sym",
+                    "Conn_01x04", prefix="JP")
+JP4.footprint = "Connector_JST:JST_XH_B4B-XH-A_1x04_P2.50mm_Vertical"
 # Real part: HLK-30M05 is the base symbol HLK-30M24 (and every other
 # HLK-30Mxx voltage) `extends` - same pattern as 74HC123/BC337/LM2596HV.
 # No HLK part actually matches this desk's measured 29V/52W (every
