@@ -209,9 +209,21 @@ MCU = import_symbol(ESPRESSIF_SYMBOLS, "ESP32-S3-DevKitC", prefix="U")
 # obstacle a router can't find a path through, not a real connector with
 # a channel down the middle); built as two PinSocket_1x22_P2.54mm's,
 # pins 1-22 and 23-44, spaced 25.4mm apart - see local.pretty/ and
-# fp-lib-table. Still a placeholder pin-numbering scheme (1-22 down one
-# row, 23-44 down the other) - verify against the real board's own
-# silkscreen before ordering a specific part.
+# fp-lib-table. Row 2 is numbered bottom-to-top (23 across from 22, 44
+# across from 1), matching Espressif's own official ESP32-S3-DevKitC
+# footprint (github.com/espressif/kicad-libraries) - confirmed by
+# fetching and inspecting their actual pad list, not by inference. Their
+# footprint uses 22.86mm row spacing rather than the 25.4mm confirmed
+# above by direct measurement of a real board, so it wasn't adopted
+# wholesale - only its pin-numbering *direction* was carried over. An
+# earlier version of this footprint numbered row 2 the same direction
+# as row 1 (a guess that was never checked against a real board or the
+# official part), which silently swapped every row-2 signal (DIR_A,
+# DIR_B, PWM and ISENSE all live on row 2) with its mirror-image pin.
+# Caught by inspection, not by DRC/ERC - neither can see this class of
+# error, since the netlist ties nets to pin *numbers*, and a footprint
+# with correct numbers at swapped physical positions still nets out
+# "correct" on paper.
 MCU.footprint = "local:DevKitC_2x22_P2.54mm_1in_row"
 GPIO_PIN = {
     0: "31", 1: "41", 2: "40", 3: "13", 4: "4", 5: "5", 6: "6", 7: "7",
