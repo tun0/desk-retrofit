@@ -200,10 +200,19 @@ BUCK.pins_by_unit[1] = [
 MCU = import_symbol(ESPRESSIF_SYMBOLS, "ESP32-S3-DevKitC", prefix="U")
 # Genuinely a module (unlike BUCK/RLY - the whole point of this part is
 # the devkit board, not a bare chip), socketed rather than soldered
-# direct so it's removable. 44 pins, 2 rows of 22 - a generic dual-row
-# placeholder; the real DevKitC's row-to-row spacing varies by board
-# width and needs adjusting once the specific board is bought.
-MCU.footprint = "Connector_PinSocket_2.54mm:PinSocket_2x22_P2.54mm_Vertical"
+# direct so it's removable. 44 pins, 2 rows of 22 at the standard 1 inch
+# (25.4mm) devkit row spacing - confirmed against a real board's own
+# dimension drawing (2x22, 2.54mm pin pitch, 25.40mm row spacing, 53.34mm
+# pin-1-to-pin-22 span). No stock KiCad footprint has a 2x22 socket at
+# this spacing (the closest, PinSocket_2x22_P2.54mm_Vertical, is a
+# single-pitch header with both rows only 2.54mm apart - a solid
+# obstacle a router can't find a path through, not a real connector with
+# a channel down the middle); built as two PinSocket_1x22_P2.54mm's,
+# pins 1-22 and 23-44, spaced 25.4mm apart - see local.pretty/ and
+# fp-lib-table. Still a placeholder pin-numbering scheme (1-22 down one
+# row, 23-44 down the other) - verify against the real board's own
+# silkscreen before ordering a specific part.
+MCU.footprint = "local:DevKitC_2x22_P2.54mm_1in_row"
 GPIO_PIN = {
     0: "31", 1: "41", 2: "40", 3: "13", 4: "4", 5: "5", 6: "6", 7: "7",
     8: "12", 9: "15", 10: "16", 11: "17", 12: "18", 13: "19", 14: "20",
