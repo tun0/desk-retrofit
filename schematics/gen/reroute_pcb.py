@@ -75,18 +75,39 @@ def run_py(code):
 
 
 def check_overlaps(src_path):
+    # Courtyard-only, not full bounding box: silkscreen overlaps are expected
+    # and accepted on this board (irrelevant for a self-milled design) - only
+    # a real F.Courtyard overlap indicates parts that would physically collide.
     out = run_py(f"""
 import pcbnew
 b = pcbnew.LoadBoard({src_path!r})
+
+def courtyard_bbox(fp):
+    bbox = None
+    for item in fp.GraphicalItems():
+        if item.GetLayerName() == 'F.Courtyard':
+            bb = item.GetBoundingBox()
+            l, t, r, bo = bb.GetLeft(), bb.GetTop(), bb.GetRight(), bb.GetBottom()
+            if bbox is None:
+                bbox = [l, t, r, bo]
+            else:
+                bbox = [min(bbox[0], l), min(bbox[1], t), max(bbox[2], r), max(bbox[3], bo)]
+    return bbox
+
+def intersects(a, c):
+    return not (a[2] <= c[0] or c[2] <= a[0] or a[3] <= c[1] or c[3] <= a[1])
+
 fps = list(b.GetFootprints())
-overlaps = [(fps[i].GetReference(), fps[j].GetReference())
-            for i in range(len(fps)) for j in range(i+1, len(fps))
-            if fps[i].GetBoundingBox().Intersects(fps[j].GetBoundingBox())]
+boxes = [(fp.GetReference(), courtyard_bbox(fp)) for fp in fps]
+boxes = [(ref, bb) for ref, bb in boxes if bb is not None]
+overlaps = [(boxes[i][0], boxes[j][0])
+            for i in range(len(boxes)) for j in range(i+1, len(boxes))
+            if intersects(boxes[i][1], boxes[j][1])]
 print(overlaps)
 """)
     overlaps = ast.literal_eval(out.strip().splitlines()[-1])
     if overlaps:
-        sys.exit(f"Footprint overlaps found, fix placement first: {overlaps}")
+        sys.exit(f"Footprint courtyard overlaps found, fix placement first: {overlaps}")
 
 
 def strip_routing(src_path, dst_path):
