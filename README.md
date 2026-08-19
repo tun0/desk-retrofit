@@ -440,6 +440,21 @@ Recorded because several later conclusions only make sense in light of these.
    supposedly already swapped. IRLB8721's 30 V VDSS doesn't clear the 29–30 V
    rail once flyback clamping is accounted for; fixed to IRLZ44N (55 V). See
    §6.2.
+10. **Assumed hand-wired perfboard was the assembly plan.** Reasoning at the
+    time: this design is all through-hole specifically because there's no
+    reflow equipment, and a fab-house PCB order felt like overkill for a
+    one-off — so point-to-point perfboard wiring, guided by a generated
+    wiring table, looked like the natural fit. Reversed once that wiring
+    table turned out to need far more jumpers than expected, concentrated
+    around locally dense ICs rather than anything structural — a strong
+    signal that hand-wiring reliability, not layout, was the actual risk.
+    A real 2-layer board (still hand-soldered, still through-hole — see
+    §6.5) routes those same nets with zero jumpers once an autorouter can
+    place traces on both layers, so it was worth doing even without a
+    fab-house order: milled at home from a standard 70×100mm pre-cut
+    copper-clad blank instead of ordered or hand-wired. See
+    `schematics/desk.kicad_pcb` and its commit history for the design
+    itself.
 
 ---
 
@@ -463,8 +478,8 @@ Rough EUR incl. BTW, Netherlands. Prices are budgeting figures, not quotes.
 | Passives | resistors, caps | €4–8 |
 | 4x 2-position screw terminal | 2.54mm pitch, board-side termination (TB1-TB4) — see §6.4 | €2–4 |
 | Mini-Fit Jr. housings + terminals | 2 mating pairs, each now on a short pigtail off the board rather than a board-mount connector — see §6.4 | €3–6 |
-| Protoboard, terminals, wire | | €10–15 |
-| **Total** | | **€30–105** |
+| PCB blank, 70×100mm pre-cut copper-clad (2-layer) | milled, not fab-house ordered — see §6.5; SHOPPING_LIST.md flags this as still needing a specific supplier | €5–10 |
+| **Total** | | **€25–100** |
 
 Phase 2 adds ~€15–25 for a VL53L1X carrier and bracket. Sourcing detail
 below (§6.6).
@@ -570,9 +585,12 @@ never needing a crimp tool during board assembly or rework.
 
 ### 6.5 This design is deliberately all through-hole
 
-Protoboard assembly, not a PCB house order — every substitution should
-preserve that, not just match electrically. Substitution criterion is the
-**package**, not just the part:
+A hand-soldered, self-milled 2-layer PCB (`schematics/desk.kicad_pcb`,
+sized to a standard 70×100mm pre-cut blank), not a fab-house order and not
+raw perfboard either — but the reason for through-hole-only still holds
+regardless of which of those three it ends up being: no reflow equipment.
+Every substitution should preserve that, not just match electrically.
+Substitution criterion is the **package**, not just the part:
 
 | Part | Through-hole option |
 |---|---|
@@ -740,7 +758,9 @@ already built.
 |---|---|
 | `APPENDIX.md` | Background, rejected alternatives, phase-2 analysis — not required to build |
 | `CLAUDE.md` | Project context for Claude Code |
-| `schematics/desk.kicad_sch` / `.pdf` / `.svg` | **The chosen design** |
+| `SHOPPING_LIST.md` | Purchase-ready BOM, grouped by supplier — see §6 for the narrative version |
+| `schematics/desk.kicad_sch` / `.pdf` / `.svg` | **The chosen schematic design** |
+| `schematics/desk.kicad_pcb` | **The chosen PCB layout** — 70×100mm, 2-layer, hand-milled (§6.5) |
 | `schematics/NETLIST.md` | Connectivity reference, generated + annotated |
 | `schematics/gen/` | Generator and its dependencies — see `CLAUDE.md` |
 | `my_components/desk/` | ESPHome external component |

@@ -82,16 +82,24 @@ Do not re-derive these; they were measured on the actual desk.
 
 ```
 APPENDIX.md    background, rejected alternatives, phase-2 analysis
+SHOPPING_LIST.md  purchase-ready BOM, grouped by supplier
 schematics/    KiCad 7 format, symbols embedded, no external libs
-               desk.kicad_sch/.pdf/.svg  <- the design, human-facing
+               desk.kicad_sch/.pdf/.svg  <- the schematic, human-facing
                                   (rejected variants dropped once this was
                                   finalised — see APPENDIX §7)
+               desk.kicad_pcb    <- the PCB layout, human-facing
+                                  (70x100mm, 2-layer, hand-milled - README §6.5)
+               desk.kicad_pro    <- project settings, tracked deliberately
+                                  (holds real DRC rules; NOT gitignored)
+               fp-lib-table      <- registers gen/local.pretty/ as a footprint lib
                NETLIST.md      <- connectivity reference, human-facing
                gen/            <- generator + its dependencies (machine-facing)
-                 sch.py            <- the generator
+                 sch.py            <- the schematic generator
                  schlib.py         <- drawing primitives
                  symbols.py        <- shared symbol library (see below)
                  espressif.kicad_sym <- vendored ESP32 symbol (see its header)
+                 local.pretty/     <- project-local footprints not in stock KiCad libs
+                 reroute_pcb.py    <- strip-and-reroute the PCB from scratch (see its header)
                  netlist_text.py   <- renders a .kicad_sch as plain text
                  find_*.py         <- schematic-quality checkers, run via `make check`
                  Makefile          <- `make` regenerates .kicad_sch/.pdf/.svg
