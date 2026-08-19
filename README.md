@@ -763,6 +763,7 @@ already built.
 | `schematics/desk.kicad_pcb` | **The chosen PCB layout** — 70×100mm, 2-layer, hand-milled (§6.5) |
 | `schematics/NETLIST.md` | Connectivity reference, generated + annotated |
 | `schematics/gen/` | Generator and its dependencies — see `CLAUDE.md` |
+| `enclosure/shell.scad` / `.stl` | 3D-printable enclosure (single open-bottom shell) — component clearance is an estimate, see the file's own header comment |
 | `my_components/desk/` | ESPHome external component |
 | `desk.yaml` | Example ESPHome config |
 

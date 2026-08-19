@@ -83,6 +83,11 @@ Do not re-derive these; they were measured on the actual desk.
 ```
 APPENDIX.md    background, rejected alternatives, phase-2 analysis
 SHOPPING_LIST.md  purchase-ready BOM, grouped by supplier
+enclosure/     3D-printable single open-bottom shell (OpenSCAD)
+               shell.scad     <- parametric source; component_clearance is
+                                  an estimate, not measured - see its own
+                                  comment before trusting it against real parts
+               shell.stl      <- generated; re-export after any shell.scad edit
 schematics/    KiCad 7 format, symbols embedded, no external libs
                desk.kicad_sch/.pdf/.svg  <- the schematic, human-facing
                                   (rejected variants dropped once this was
