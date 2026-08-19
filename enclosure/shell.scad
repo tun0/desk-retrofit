@@ -35,11 +35,12 @@ component_clearance = 19;
 // ---- Shell geometry ----
 wall_t = 2.4;              // FDM-friendly - 2 perimeters at a common 0.4mm/1.2mm nozzle
 ceiling_t = 2.4;
-xy_clearance = 1.5;        // gap between PCB edge and inner wall, most sides
-left_clearance = 8;        // extra on the left: U2's USB-C connector overhangs
-                            // the PCB's own left edge by ~2mm (pin1/44 sit at
-                            // x=3.9mm on the board - see session notes) and
-                            // needs room to plug in a cable beyond that
+xy_clearance = 1.5;        // gap between PCB edge and inner wall, all sides
+                            // (U2 was shifted right on the board so its USB-C
+                            // end reaches the board's right edge - see session
+                            // notes - which as a side effect pulled the
+                            // antenna end fully inside the board too, so no
+                            // extra left-side allowance is needed any more)
 
 // standoff: cylindrical post from the ceiling down to the PCB's top surface,
 // with a pilot hole for an M3 heat-set insert (common brass insert OD ~4.0-
@@ -50,7 +51,7 @@ insert_hole_d = 4.2;
 insert_depth = 6;
 
 // ---- Derived ----
-inner_w = pcb_w + left_clearance + xy_clearance;
+inner_w = pcb_w + 2 * xy_clearance;
 inner_h = pcb_h + 2 * xy_clearance;
 outer_w = inner_w + 2 * wall_t;
 outer_h = inner_h + 2 * wall_t;
@@ -60,14 +61,12 @@ shell_h = ceiling_t + component_clearance + pcb_t + 2;  // +2mm below the PCB's
                                                           // don't touch the
                                                           // mounting surface
 
-// PCB origin, in shell coordinates: left_clearance from the left wall's
-// inner face, xy_clearance from the front wall's inner face
-pcb_x0 = wall_t + left_clearance;
+// PCB origin, in shell coordinates: xy_clearance from the left/front walls'
+// inner faces
+pcb_x0 = wall_t + xy_clearance;
 pcb_y0 = wall_t + xy_clearance;
 
-// wire/USB cutouts - generous per explicit instruction ("liberal, size-wise")
-// rather than tightly matched to connector bodies. Positions are the real
-// PCB-edge span of each connector (see session notes), expanded outward.
+// wire cutouts - generous per explicit instruction ("liberal, size-wise").
 // NOTE: this must come after shell_h/ceiling_t are defined above - OpenSCAD
 // resolves top-level scalar assignments in file order, not by dependency,
 // so referencing shell_h here before its own definition silently produced
@@ -76,10 +75,37 @@ pcb_y0 = wall_t + xy_clearance;
 cutout_h = shell_h - ceiling_t;  // exactly the open-interior height, so the
                                    // cutout perforates the wall without
                                    // touching the solid ceiling slab above it
+cutout_z = wall_t + cutout_h / 2;  // vertical center of the open interior,
+                                     // used to center round pass-through holes
 
-module cutout(x, y, w) {
-    translate([x, y, -0.5])
-        cube([w, wall_t + 1, cutout_h + 1]);
+// TB1+TB2 and TB3+TB4 are each wired with a single shared pigtail off-board
+// (motor+supply, and handset, respectively - see README §6.4) - the screw
+// terminals themselves stay fully internal, wired before the enclosure goes
+// on, so they need no external access at all. Just a round pass-through per
+// pigtail bundle, generously sized rather than fitted to a wire gauge.
+// TB3/TB4 were relocated (session notes) to a right-side pocket to clear
+// U2's USB edge, so their pigtail hole moves to the right wall with them;
+// TB1+TB2's hole goes on the opposite (left) wall, clear of the antenna.
+pigtail_hole_d = 10;
+
+module wall_hole_x(y, z, from_left) {
+    // round pass-through in the X direction (left or right wall)
+    x0 = from_left ? -0.5 : outer_w - wall_t - 0.5;
+    translate([x0, y, z])
+        rotate([0, 90, 0])
+            cylinder(d = pigtail_hole_d, h = wall_t + 1, $fn = 32);
+}
+
+// U2's USB-C cutout - a rounded rectangle (rounded corners per explicit
+// request), built as the hull of four corner cylinders so it actually
+// spans the wall's full penetration depth (x) as well as its height (y).
+module rounded_wall_slot(x0, y0, depth, w, r) {
+    hull() {
+        for (dx = [r, depth - r])
+            for (dy = [r, w - r])
+                translate([x0 + dx, y0 + dy, -0.5])
+                    cylinder(r = r, h = cutout_h + 1, $fn = 24);
+    }
 }
 
 module shell() {
@@ -91,21 +117,19 @@ module shell() {
         translate([wall_t, wall_t, 0])
             cube([inner_w, inner_h, shell_h - ceiling_t]);
 
-        // TB2 (supply pair): near PCB y=0 edge, x:7.5-16.4 -> front wall (y=0)
-        cutout(pcb_x0 + 6, -0.5, 12);
+        // TB1+TB2 shared pigtail (motor+supply): left wall, clear of the
+        // antenna (which sits within U2's own PCB y:13.4-41.8 span)
+        wall_hole_x(pcb_y0 + 6, cutout_z, true);
 
-        // TB1 (motor pair): near PCB y=100 edge, x:36.4-47.9 -> back wall
-        cutout(pcb_x0 + 35, outer_h - wall_t - 0.5, 14);
+        // TB3+TB4 shared pigtail (handset): right wall, near their actual
+        // relocated position (PCB y:42.8-70)
+        wall_hole_x(pcb_y0 + 56, cutout_z, false);
 
-        // TB3+TB4 (signal + power pairs): near PCB x=70 edge, y:13.4-37.5
-        // combined -> right wall (x=outer_w)
-        translate([outer_w - wall_t - 0.5, pcb_y0 + 12, -0.5])
-            cube([wall_t + 1, 26, cutout_h + 1]);
-
-        // U2 USB-C: overhangs PCB's own x=0 edge; pin1/44 span y:14.9-40.3
-        // on the board -> left wall (x=0), widened per "liberal" instruction
-        translate([-0.5, pcb_y0 + 8, -0.5])
-            cube([wall_t + 1, 30, cutout_h + 1]);
+        // U2 USB-C: connector overhangs the PCB's own x=70 edge by ~2.5mm
+        // near pins 22/23 -> right wall, positioned within U2's PCB
+        // y:13.4-41.8 span (below the antenna end, above TB3/TB4's new
+        // spot), widened per "liberal" instruction
+        rounded_wall_slot(outer_w - wall_t - 1, pcb_y0 + 17, wall_t + 2, 20, 1.2);
     }
 
     // four standoffs, hanging from the ceiling underside down to the PCB's
