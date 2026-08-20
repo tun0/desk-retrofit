@@ -189,12 +189,14 @@ cutout_z = floor_t + cutout_h / 2;
 // pigtail bundle, generously sized rather than fitted to a wire gauge.
 // Positions verified directly against desk.kicad_pcb via the pcbnew Python
 // API (footprint bounding boxes), not assumed, and passed through pcb_y()
-// (see above): TB1+TB2 sit at PCB x:34.8-58.4, y:84.6-96.3, which puts
-// them against the FRONT wall (x-center ~46.6 is just carried over, only
-// y decided which wall). TB3+TB4 sit at PCB x:58.6-70.3, y:42.8-70 -
-// still the RIGHT wall (x wasn't flipped), y-center ~43.6 - the same wall
-// U2's USB slot lands on below (matching the "relocated to clear U2's
-// USB edge" reasoning).
+// (see above): TB1+TB2 sit at PCB x:49.8-73.4, y:99.6-111.3 (both +15
+// from the whole-board shift - see conversation), which puts them
+// against the FRONT wall (x-center ~61.6 is just carried over, only y
+// decided which wall). TB3+TB4 sit at PCB x:73.6-85.3, y:57.8-85 - still
+// the RIGHT wall (x wasn't flipped), y-center ~56.4 (was mistyped 43.6
+// here before this pass - the range was always right, the center wasn't)
+// - the same wall U2's USB slot lands on below (matching the "relocated
+// to clear U2's USB edge" reasoning).
 pigtail_hole_d = 10;
 
 // mounting ears ("pig ears"): one flange centered on each short (front/
@@ -417,13 +419,14 @@ module shell() {
             cylinder(d = ear_hole_d, h = ear_t + 1, $fn = 24);
 
         // TB1+TB2 shared pigtail (motor+supply): front wall, at their
-        // actual PCB x-center (~46.6) - x isn't flipped, only y decided
-        // the wall
-        wall_hole_y(pcb_x0 + 46.6, cutout_z, true);
+        // actual PCB x-center (~61.6, after the whole board shifted
+        // +15/+15 to clear the drawing-sheet border - see conversation)
+        // - x isn't flipped, only y decided the wall
+        wall_hole_y(pcb_x0 + 61.6, cutout_z, true);
 
         // TB3+TB4 shared pigtail (handset): right wall, at their actual
-        // PCB y-center (~56.4) run through pcb_y()
-        wall_hole_x(pcb_y(56.4), cutout_z, false);
+        // PCB y-center (~71.4, same +15 shift) run through pcb_y()
+        wall_hole_x(pcb_y(71.4), cutout_z, false);
 
         // U2 USB-C: checked directly against desk.kicad_pcb via the pcbnew
         // Python API rather than assumed - U2's courtyard overhangs the
@@ -432,15 +435,16 @@ module shell() {
         // small overhang is the USB-C connector; the big one is antenna
         // clearance - so the slot belongs on the right wall, the same one
         // TB3/TB4 land on above (matching the "relocated to clear U2's USB
-        // edge" reasoning). Positioned within U2's PCB y:13.4-41.8 span,
-        // run through pcb_y(). "Liberal" sizing applies mostly along the
-        // wall (y) and only a little vertically (z) - the opening doesn't
-        // need to be tall, just wide enough for comfortable cable access.
-        // Bottom sits just above the PCB's own top (component) surface -
-        // nothing below that needs to be reachable through this wall.
+        // edge" reasoning). Positioned within U2's PCB y:28.4-56.8 span
+        // (also +15 from the board shift - see conversation), run through
+        // pcb_y(). "Liberal" sizing applies mostly along the wall (y) and
+        // only a little vertically (z) - the opening doesn't need to be
+        // tall, just wide enough for comfortable cable access. Bottom
+        // sits just above the PCB's own top (component) surface - nothing
+        // below that needs to be reachable through this wall.
         usb_slot_z0 = floor_t + standoff_h + pcb_t + 1;
         usb_slot_h = 8;
-        rounded_wall_slot(outer_w - wall_t - 1, wall_t + 2, pcb_y(37), 20, usb_slot_z0, usb_slot_h, 2);
+        rounded_wall_slot(outer_w - wall_t - 1, wall_t + 2, pcb_y(52), 20, usb_slot_z0, usb_slot_h, 2);
     }
 
     // four standoffs, rising from the floor to the PCB's back surface

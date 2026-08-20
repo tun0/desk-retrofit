@@ -8,7 +8,7 @@ sch.py has one to import.
 """
 import os
 
-from schlib import Schematic, Sym, poly, rect, BGFILL, import_symbol  # noqa: F401,E501
+from schlib import Schematic, Sym, rect, BGFILL, import_symbol  # noqa: F401,E501
 
 KICAD_SYMBOLS = "/usr/share/kicad/symbols"
 # Not part of the local Kicad install - vendored from
@@ -77,15 +77,19 @@ C_.footprint = "Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm"
 DH = import_symbol(f"{KICAD_SYMBOLS}/Device.kicad_sym", "D",
                    ref_dy=4.4, val_dy=-4.4)
 DH.footprint = "Diode_THT:D_DO-35_SOD27_P7.62mm_Horizontal"
-# No generic bidirectional TVS symbol exists in this Kicad library
-# snapshot (only specific parts like TVS0500DRV) - kept hand-drawn.
-TVS = Sym("TVS", "D", [("1", "1", P, 0, 6.35, 270, 3.81),
-                       ("2", "2", P, 0, -6.35, 90, 3.81)],
-          [poly([(-2.54, 0.5), (2.54, 0.5), (0, 3.4), (-2.54, 0.5)], BGFILL),
-           poly([(-2.54, -0.5), (2.54, -0.5), (0, -3.4), (-2.54, -0.5)],
-                BGFILL)], ref_dy=2.2, val_dy=-2.2, ref_dx=4.4, val_dx=4.4,
-          justify="left")
+# Device.kicad_sym does have a generic bidirectional TVS ("D_TVS",
+# described in the library itself as "Bidirectional transient-voltage-
+# suppression diode") - the hand-drawn version predates checking for
+# one. Native pins are horizontal (+-3.81 on X); D1 needs them vertical
+# (it shunts the supply rail straight down to GND), so the place() call
+# in sch.py passes angle=270 - same "rotate a real symbol" mechanism as
+# R_/C_/DH, not a separate pre-rotated object.
+TVS = import_symbol(f"{KICAD_SYMBOLS}/Device.kicad_sym", "D_TVS", prefix="D")
 # DO-15, matching the P6KE33CA/1.5KE33CA axial TVS parts README 6.5 names.
+# Horizontal/axial-laid-flat, not the vertical/standing mount tried
+# earlier in the U5 placement crunch (see conversation) - reverted back
+# once the board had room again; laid flat is easier to mount than
+# standing on 2.54mm-pitch bent leads.
 TVS.footprint = "Diode_THT:D_DO-15_P10.16mm_Horizontal"
 # ref_dy/val_dy overridden to match the BJT parts' spacing exactly (1.27
 # to -1.27) - the library's own stored gap (1.905 to 0) is tighter, even
@@ -314,11 +318,18 @@ BJT_PNP.footprint = "Package_TO_SOT_THT:TO-92_Wide"
 ACS = import_symbol(f"{KICAD_SYMBOLS}/Sensor_Current.kicad_sym",
                     "ACS712xLCTR-05B", prefix="U",
                     ref_dy=12.7, val_dy=10.16)
-# The bare chip is SOIC-8 (README 6.5) - not through-hole, so this is
-# actually the Pololu ACS724 carrier board, socketed like U2. 8 pins,
-# single row - a generic placeholder; verify against the carrier's own
-# hole spacing once it's in hand.
-ACS.footprint = "Connector_PinSocket_2.54mm:PinSocket_1x08_P2.54mm_Vertical"
+# The bare chip is SOIC-8 (README 6.5) - not through-hole, so this
+# actually sits on a generic SOIC-8-to-DIP adapter (from stock, not the
+# Pololu carrier - see conversation), socketed like U2. DIP-8 socket,
+# 0.3" (7.62mm) row spacing - a real KiCad footprint, not a guessed
+# placeholder, but still verify the specific adapter's own pitch once
+# it's in hand. Pins 1/2 (IP+) and 3/4 (IP-) land on ordinary DIP socket
+# pins here - the schematic already ties each pair to one net (see
+# sch.py), but that only makes the *connection*, not a low-resistance
+# one: bridge pins 1-2 and 3-4 with a soldered wire jumper right at the
+# adapter (README 6.5) so the adapter's own unknown trace width is never
+# the only path carrying motor current.
+ACS.footprint = "Package_DIP:DIP-8_W7.62mm_Socket"
 # Real part: Conn_02x02_Top_Bottom - closer to physical reality than a
 # single row (J2/J3 are both Molex Mini-Fit Jr, 4 circuit dual row, per
 # README 1.5). "Top_Bottom" numbers row-major (pins 1,2 = row 1; pins
@@ -331,15 +342,17 @@ ACS.footprint = "Connector_PinSocket_2.54mm:PinSocket_1x08_P2.54mm_Vertical"
 # which this project deliberately doesn't rely on - see README 1.6).
 CONN = import_symbol(f"{KICAD_SYMBOLS}/Connector_Generic.kicad_sym",
                      "Conn_02x02_Top_Bottom", prefix="J")
-# The board-side Mini-Fits (formerly J2, J3) are dropped from this sheet
-# entirely - the board only ever solders to screw terminals (no crimp
-# tool needed for board assembly), and a short crimped pigtail, off-board,
-# carries each circuit on to the actual Mini-Fit pin. That pigtail/mating
-# detail belongs with the connector reference (README 1.5/1.6, NETLIST.md),
-# not duplicated as a second connector symbol here. CONN (J1, J4) still
-# stands for the real Mini-Fits at the far end, inside the motor housing/
-# handset. 2-position, 2.54mm pitch - same pitch as CONN's own pins, which
-# is what lets a terminal drop into an existing pair's wiring unchanged.
+# The board-mount Mini-Fits are gone - the board only ever solders to
+# screw terminals (no crimp tool needed for board assembly) - but the
+# pigtail's own Mini-Fit plug (J2, J3) is a real, separate part from
+# the fixed receptacles at the far end (J1, J4, inside the motor
+# housing/handset), and both ends are drawn: an earlier version of this
+# file dropped J2/J3 on the reasoning that only a net-link to J1/J4 was
+# missing, but the plug itself is still a physical thing you have to
+# buy and crimp, same footing as J1/J4 - see conversation, sch.py's
+# SUPPLY and HANDSET INTERFACE sections. 2-position, 2.54mm pitch on
+# TERM2 below - same pitch as CONN's own pins, which is what lets a
+# terminal drop into an existing pair's wiring unchanged.
 TERM2 = import_symbol(f"{KICAD_SYMBOLS}/Connector.kicad_sym",
                       "Screw_Terminal_01x02", prefix="TB")
 # 5.00mm pitch - a common, easy-to-source real terminal block pitch,

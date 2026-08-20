@@ -35,6 +35,9 @@ deeper catalogue if a part isn't at Reichelt.
       the concern here, any ≥10V part is fine)
 - [ ] 2.2µF — qty 1 (C3, watchdog timing — see README/APPENDIX for why
       74HC123 timing tolerance doesn't matter for this application)
+- [ ] 100nF (0.1µF), ≥10V — qty 1 (C4, ACS724 VCC bypass — added when the
+      Pololu carrier that used to provide this was dropped, see README §6.5)
+- [ ] 1nF — qty 1 (C5, ACS724 FILTER-to-GND — same reason as C4)
 
 ### Diodes
 
@@ -43,6 +46,15 @@ deeper catalogue if a part isn't at Reichelt.
 - [ ] TVS, 33V bidirectional (`P6KE33CA` or `1.5KE33CA`, axial) — qty 1 (D1
       — input transient protection; **no fuse fitted by design**, see
       README §6.1 before "fixing" that)
+
+### Current sensor (bare chip, no carrier)
+
+- [ ] ACS724xLCTR-05AB, SOIC-8 — qty 1 (U5, current sensor). Bidirectional,
+      5A range. **Not the Pololu carrier** — mounted bare on a generic
+      SOIC-8-to-DIP-8 adapter instead (0.3"/7.62mm row spacing, already in
+      inventory — see README §6.5). C4/C5 above replace the two caps the
+      Pololu carrier used to provide. Fallback if the chip itself is
+      unavailable: 10mΩ shunt + INA240 (SOIC-8, needs its own breakout too).
 
 ### Transistors
 
@@ -74,19 +86,12 @@ deeper catalogue if a part isn't at Reichelt.
 
 ## Modules (TinyTronics / Kiwi Electronics / Opencircuit / Antratek)
 
-Per README §6.6 — Kiwi and Antratek specifically carry Pololu, which
-matters for the ACS724 carrier below.
-
 - [ ] ESP32-S3-DevKitC — qty 1 (U2). Bare devkit, **no display** (see
       README §5/§6). Row spacing on this design's footprint is confirmed
       at **25.4mm** (1"), measured against a real board — verify against
       whatever unit you actually receive before assembly; some DevKitC
       variants use narrower 22.86mm spacing (see `symbols.py` for the full
       story on this).
-- [ ] ACS724xLCTR-05AB Pololu carrier — qty 1 (U5, current sensor).
-      Bidirectional, 5A range. Fallback if unavailable: 10mΩ shunt +
-      INA240 (~€8 cheaper, but INA240 is SOIC-8 and needs a breakout —
-      fights the through-hole preference, see README §6.5/§6.6).
 
 ## Connectors (Molex Mini-Fit Jr., 4-circuit)
 

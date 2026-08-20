@@ -472,7 +472,7 @@ Rough EUR incl. BTW, Netherlands. Prices are budgeting figures, not quotes.
 | 74HC123 + 74HC08 | watchdog and gating | €1–3 |
 | SB560 Schottky | freewheel | <€1 |
 | 2x 1N4148 | relay coil flyback diodes (D2/D6), DO-35 | <€1 |
-| ACS724-5AB carrier | bidirectional, 5A — see §4.4; or 10 mΩ shunt + INA240, ~€8 less | €12–18 |
+| ACS724xLCTR-05AB (bare) + SOIC-8→DIP-8 adapter | bidirectional, 5A — see §4.4/§6.5; the Pololu carrier this used to be is dropped, its 2 caps (C4/C5) now on the main board instead; or 10 mΩ shunt + INA240, similar cost | €4–8 |
 | LM2596HV buck | **must** be rated >40 V in | €4–8 |
 | TVS 33 V bidirectional | D1 — no fuse fitted, see §6.1 | <€1 |
 | Passives | resistors, caps | €4–8 |
@@ -604,13 +604,18 @@ Substitution criterion is the **package**, not just the part:
 | Coil flyback | `1N4148`, DO-35 |
 | SRD-05VDC-SL-C relay | bare relay, TO-5-ish THT (EN50005/Form C) |
 | LM2596HV buck | TO-220-5, bare chip — not a module |
-| ACS724 | Pololu carrier (0.1" holes) — the bare chip is SOIC-8 |
+| ACS724 | bare SOIC-8 chip on a generic SOIC-8→DIP-8 adapter, socketed like U2 |
 | ESP32-S3-DevKitC | devkit module, socketed with 0.1" pin headers |
 
-The ACS724 is the one part where the **carrier**, rather than the chip, is
-what keeps the board through-hole — the bare `ACS724xLCTR-05AB` this design
-uses (§4.4) is SOIC-8. If sourcing the bare chip instead, it needs a
-breakout, same trade-off the INA240 fallback (§4.4) already has.
+The ACS724 (`ACS724xLCTR-05AB`, §4.4) is SOIC-8, not through-hole itself —
+what keeps the board through-hole is whatever it's mounted on. Earlier
+revisions of this design used a Pololu carrier for that (0.1" holes,
+ready-made); this one uses a generic SOIC-8-to-DIP-8 adapter instead
+(0.3"/7.62mm row spacing, already in inventory). That swap drops two
+things the Pololu carrier provided for free: a 0.1uF VCC bypass cap and a
+1nF FILTER-to-GND cap, both confirmed against Allegro's own ACS712/ACS724
+application circuit (not just the Pololu board). Both are now discrete
+parts on the main schematic instead (C4, C5) - see NETLIST.md.
 
 ### 6.6 Sourcing (Netherlands)
 
@@ -622,14 +627,16 @@ Ruled out, with reasons, so they are not re-evaluated:
 Working pattern is **two orders**:
 
 - **Jellybean components** — Reichelt (DE) or TME (PL). Both ship to NL for
-  single-digit shipping with no minimum. TME has the deeper catalogue.
+  single-digit shipping with no minimum. TME has the deeper catalogue. The
+  bare ACS724 and a generic SOIC-8-to-DIP-8 adapter both belong here now
+  that the Pololu carrier (§6.5) is out of the design - neither needs a
+  modules supplier specifically.
 - **Modules** — TinyTronics (Ede), Kiwi Electronics, Opencircuit (Zaandam) or
-  Antratek. Kiwi and Antratek carry Pololu, which matters for the ACS724
-  carrier.
+  Antratek.
 
 **Mouser is being evaluated** as a possible single-order option — its
-European free-shipping threshold may be low enough to cover the whole BOM
-including the bare ACS724. Left open; not decided.
+European free-shipping threshold may be low enough to cover the whole BOM.
+Left open; not decided.
 
 Substitutes worth recording:
 

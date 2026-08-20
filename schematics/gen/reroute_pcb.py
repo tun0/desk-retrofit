@@ -4,12 +4,13 @@
 For experimenting with placement: drag footprints around in KiCad's PCB
 editor (or move them via the pcbnew API), save, then run this script. It
 throws away all existing tracks/vias/zones, re-routes with Freerouting,
-and refills both ground pours - the same manual sequence this session
-used for every placement change, now in one command.
+and refills both ground pours plus a keepout around every mounting hole
+(MOUNTING_HOLE_KEEPOUT_MM) - the same manual sequence this session used
+for every placement change, now in one command.
 
 Does NOT touch footprint positions, the board outline, or anything else -
-only tracks, vias, and the two GND zones. Re-run after every placement
-change you want to test.
+only tracks, vias, and zones (the two GND pours and the mounting-hole
+keepouts). Re-run after every placement change you want to test.
 
 Usage (from schematics/gen/):
     python3 reroute_pcb.py [--passes N]
@@ -61,9 +62,37 @@ CLEARANCE_MM = 0.4
 VIA_PAD_MM = 1.2
 VIA_DRILL_MM = 0.6
 
+# Motor-current-carrying nets get a wider trace than the generic
+# TRACK_WIDTH_MM signal default - checked directly against pcbnew (see
+# conversation): the whole board was a uniform 0.5mm, which a standard
+# IPC-2221 external-layer/1oz-copper table puts at roughly 1A for a sane
+# thermal rise, undersized for this design's measured 1.8A supply
+# (current-limited, but "2 min continuous at half load" is a real,
+# documented duty mode, not just brief pulses). 1.0mm covers 1.8A with
+# real margin. These have to be their own Specctra DSN class (pulled out
+# of kicad_default's member list below), not just a bigger number
+# patched into the global (width 500) after export - a uniform widen-
+# in-place attempt broke clearance against neighbouring pads in the
+# tightly-packed relay/diode cluster (K1/K2/D2), which was already
+# routed right at the 0.4mm clearance limit at 0.5mm width. Freerouting
+# needs the wider requirement as an actual per-net rule so it can find
+# valid paths around that, not have it forced on afterward.
+POWER_TRACK_WIDTH_MM = 1.0
+POWER_NETS = ("VSW", "/MRET", "/DRV_UP", "Net-(TB1-Pin_1)", "Net-(TB1-Pin_2)")
+
 ZONE_CLEARANCE_MM = 0.4
 ZONE_THERMAL_GAP_MM = 0.3
 BOARD_MARGIN_MM = 2.0
+
+# MountingHole_* footprints (H1-H4) use a single NPTH pad (no copper
+# annulus) with no keepout zone of their own - checked directly (see
+# conversation): the GND pour was filling to within ~0.3mm of the drill
+# edge, just the zone's own generic clearance setting, not a real
+# mechanical keepout. A common M3 screw/washer head (~6mm) needs about
+# 1.4mm past the 3.2mm drill edge to actually clear copper. This is a
+# rule-area keepout (no copper fill, any layer), not just a wider
+# clearance number, so it survives regardless of zone settings.
+MOUNTING_HOLE_KEEPOUT_MM = 6.5
 
 
 def run_py(code):
@@ -155,7 +184,73 @@ assert ok, "ExportSpecctraDSN failed"
     content = content.replace(f"(circle B.Cu {old_dia})", f"(circle B.Cu {via_pad_um})")
     content = content.replace("(width 200)", f"(width {int(TRACK_WIDTH_MM * 1000)})")
     content = content.replace("(clearance 200)", f"(clearance {int(CLEARANCE_MM * 1000)})")
+    content = _split_power_class(content, via_pad_um, via_drill_um)
     open(dsn_path, "w").write(content)
+
+
+def _dsn_token(net):
+    # Specctra DSN quotes any net name containing characters that aren't
+    # plain identifier chars (Kicad's own exporter already does this for
+    # the member lists being patched here - matched, not reinvented).
+    return f'"{net}"' if re.search(r"[^A-Za-z0-9_+/-]", net) else net
+
+
+def _find_matching_paren(content, open_pos):
+    """content[open_pos] must be '(' - return the index just past its
+    matching ')'."""
+    depth = 0
+    for i in range(open_pos, len(content)):
+        if content[i] == "(":
+            depth += 1
+        elif content[i] == ")":
+            depth -= 1
+            if depth == 0:
+                return i + 1
+    sys.exit("unbalanced parens scanning DSN class block")
+
+
+def _split_power_class(content, via_pad_um, via_drill_um):
+    # Pull POWER_NETS out of kicad_default's member list into their own
+    # class with a wider (rule (width ...)) - a class-level rule is what
+    # Freerouting actually routes to; patching the global width after
+    # export (like the plain TRACK_WIDTH_MM case above) can't give some
+    # nets a different width than others.
+    start = content.find("(class kicad_default")
+    if start == -1:
+        sys.exit("could not find kicad_default class in exported DSN")
+    end = _find_matching_paren(content, start)
+    block = content[start:end]
+
+    members_m = re.search(r"\(class kicad_default((?:.|\n)*?)\(circuit", block)
+    members = members_m.group(1)
+    trimmed = members
+    for net in POWER_NETS:
+        token = _dsn_token(net)
+        trimmed, n = re.subn(r"\s+" + re.escape(token) + r"(?=\s)", "", trimmed,
+                              count=1)
+        if not n:
+            sys.exit(f"power net {net!r} not found in kicad_default class - "
+                      f"check it's actually present on this board")
+    block = block.replace(f"(class kicad_default{members}(circuit",
+                          f"(class kicad_default{trimmed}(circuit", 1)
+
+    power_members = " ".join(_dsn_token(n) for n in POWER_NETS)
+    power_width_um = int(POWER_TRACK_WIDTH_MM * 1000)
+    power_class = (
+        f"\n    (class power_nets {power_members}\n"
+        f"      (circuit\n"
+        f'        (use_via "Via[0-1]_{via_pad_um}:{via_drill_um}_um")\n'
+        f"      )\n"
+        f"      (rule\n"
+        f"        (width {power_width_um})\n"
+        f"        (clearance {int(CLEARANCE_MM * 1000)})\n"
+        f"      )\n"
+        f"    )"
+    )
+    # Insert the new class right after kicad_default's own closing paren -
+    # still inside the enclosing (network ...) block, as a sibling class,
+    # not after it (that would be a syntax error Freerouting can't parse).
+    return content[:start] + block + power_class + content[end:]
 
 
 def run_freerouting(dsn_path, ses_path, passes):
@@ -196,7 +291,33 @@ print(n_tracks, n_vias)
 
     run_py(f"""
 import pcbnew
+import math
 b = pcbnew.LoadBoard({out_path!r})
+
+# Keepouts first, so the GND pour fill below already avoids them on its
+# one and only fill pass - order matters, filler.Fill() runs once at the
+# end of this block.
+mounting_holes = [fp.GetPosition() for fp in b.GetFootprints()
+                  if str(fp.GetFPID().GetLibItemName()).startswith("MountingHole")]
+r = pcbnew.FromMM({MOUNTING_HOLE_KEEPOUT_MM} / 2)
+for i, hpos in enumerate(mounting_holes):
+    zone = pcbnew.ZONE(b)
+    layers = pcbnew.LSET()
+    layers.AddLayer(pcbnew.F_Cu)
+    layers.AddLayer(pcbnew.B_Cu)
+    zone.SetLayerSet(layers)
+    zone.SetIsRuleArea(True)
+    zone.SetDoNotAllowZoneFills(True)
+    zone.SetDoNotAllowTracks(True)
+    zone.SetDoNotAllowVias(True)
+    zone.SetDoNotAllowPads(False)  # else it flags the mounting hole's own NPTH pad
+    zone.SetZoneName(f"mounting_hole_keepout_{{i}}")
+    outline = zone.Outline()
+    outline.NewOutline()
+    for seg in range(32):
+        ang = 2 * math.pi * seg / 32
+        outline.Append(int(hpos.x + r * math.cos(ang)), int(hpos.y + r * math.sin(ang)))
+    b.Add(zone)
 
 for layer, name in [(pcbnew.F_Cu, "GND_POUR"), (pcbnew.B_Cu, "GND_POUR_B")]:
     zone = pcbnew.ZONE(b)

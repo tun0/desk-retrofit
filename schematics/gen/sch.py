@@ -13,7 +13,7 @@ from symbols import (Schematic, GNDS, RAILS, _rail, R_, C_, DH,  # noqa: E402
                      TVS, NMOS, MOT, LIM, RLY, BUCK, MCU, GPIO_PIN,
                      MCU_5V, MCU_GND, MCU_3V3, MONO, AND2,
                      BJT_NPN, BJT_PNP, ACS, CONN, PSU, AC_FLAG, ROCKER, TERM2,
-                     JP3, JP4)
+                     JP4)
 
 s = Schematic("desk", "Slangerup desk retrofit - in-line drive",
               "Box owns the winding; unplug it to revert", paper="A1")
@@ -42,6 +42,39 @@ def tap(x, y, name):
         RAILS[name] = _rail(name)
     s.place(RAILS[name], _uref(), name, x, y - 1.27, hide_ref=True)
     s.wire((x, y), (x, y - 1.27))
+
+
+def pigtail_break(pin, net_name, note, dx1, dy, dx2):
+    # J2/J3 (the board-side Mini-Fits) aren't drawn (see symbols.py) - the
+    # pigtail that used to mate with them is real, off-board wire, so
+    # TB1-4 and J1/J4 need an actual net link across that gap, not just
+    # the prose that used to be the only connection (see conversation).
+    # A matching glabel is the standard KiCad way to say "this net
+    # continues somewhere else on the page" - dx1 first (perpendicular
+    # to whatever axis the pin's own existing wire already uses, so this
+    # new branch can never be mistaken for a continuation of it), then
+    # dy to clear the local clutter, then dx2 into the label itself so
+    # every label in this file keeps the same horizontal-approach shape
+    # (angle 0/180 - see RIGHT_SIDE/LEFT_SIDE above).
+    #
+    # Two pins of the same 2-pin part share one x column (only their y
+    # differs, by the part's own pitch). Calling this on both with the
+    # same dx1 puts both rises on that exact column - dy (8+) dwarfs a
+    # 2.54 pitch, so the two rises don't just run parallel nearby, they
+    # overlap on the SAME line: a dead short between two different
+    # nets, not a visual nicety fixed by matching dy. dx1 must differ
+    # between the two calls (0 and something else entirely) so the two
+    # rises are never on the same column in the first place.
+    x0, y0 = pin
+    x1 = x0 + dx1
+    y1 = y0 - dy
+    x2 = x1 + dx2
+    s.wire((x0, y0), (x1, y0), (x1, y1), (x2, y1))
+    ang = 0 if dx2 >= 0 else 180
+    s.glabel(net_name, x2, y1, angle=ang)
+    if note:
+        nx = x2 + 1 if dx2 >= 0 else x2 - 1 - 0.9 * len(note)
+        s.note(note, nx, y1 - 2.5, 1.0)
 
 
 V5, VS, V3 = "+5V", "VSW", "+3V3"
@@ -93,9 +126,10 @@ pins = {k: s.pin("U2", k) for k in OUT}
 
 # Every direct breakout off U2's own body gets the SAME stub length and
 # a glabel with its signal's name - that's the whole connection on this
-# end. JPDRV/JPSNS below (and their destination-side counterparts near
-# WATCHDOG+GATING and the rocker/current-sense circuitry) pick these up
-# purely by matching label, the same mechanism WDOG already uses. Length
+# end. JPDRV below (and its destination-side counterpart near
+# WATCHDOG+GATING), plus the rocker/current-sense circuitry in HANDSET
+# INTERFACE, pick these up purely by matching label, the same mechanism
+# WDOG already uses. Length
 # is purely cosmetic (there's no PCB copper to route here, so it's never
 # routing-constrained the way a real stub would be) - one shared length
 # keeps every label lined up in a single column per side instead of the
@@ -117,7 +151,9 @@ pins = {k: s.pin("U2", k) for k in OUT}
 # from the right. Without it the wire runs into the label's flat back
 # edge instead of its point.
 STUB_LEN = 20.0
-RIGHT_SIDE = (PIN["KICK"], PIN["ISENSE"], PIN["SW_UP"], PIN["SW_DN"],
+# ISENSE isn't in this list - see the current-sense divider below, which
+# wires straight to U2's own pin instead of a uniform stub+label.
+RIGHT_SIDE = (PIN["KICK"], PIN["SW_UP"], PIN["SW_DN"],
               PIN["SDA"], PIN["SCL"])
 LEFT_SIDE = (PIN["DIR_A"], PIN["DIR_B"], PIN["PWM"])
 for num in RIGHT_SIDE:
@@ -135,73 +171,78 @@ for num in LEFT_SIDE:
 # stub or "spare" label, that only made sense when this pin was one of
 # a handful the hand-drawn box even had.
 
+# Current-sense divider (R4/R5), moved here next to U2's own ISENSE pin
+# and wired to it with a literal wire - like the original, single-board
+# schematic had it, before any of the off-board/pigtail experiments.
+# U5 (the ACS current sensor) stays behind in SUPPLY/DRIVE, next to the
+# current it's actually measuring - only VIOUT, its raw analog output,
+# needs to cross the sheet now, so that end gets the matching label
+# instead (the same swap made for every other signal that crosses a
+# long distance on this sheet).
+isense_pin = pins[PIN["ISENSE"]]
+RX = isense_pin[0] + 35
+# Standing (compact vertical) footprint, not this design's usual R_
+# default - PCB-side only (the schematic symbol doesn't care about
+# mounting style). Checked directly: on the real board these two sit in
+# the K1-to-K2 corridor, which is only wide enough for U5's DIP-8 socket
+# once R4/R5 stop taking up ~12mm of vertical run each for their leads.
+FOOTPRINT_VERT_R = "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P2.54mm_Vertical"
+s.place(R_, "R4", "10k", RX, isense_pin[1] - 6.35, footprint=FOOTPRINT_VERT_R)
+s.place(R_, "R5", "20k", RX, isense_pin[1] + 6.35, footprint=FOOTPRINT_VERT_R)
+r4_top, r4_bot = s.pin("R4", "1"), s.pin("R4", "2")
+r5_top, r5_bot = s.pin("R5", "1"), s.pin("R5", "2")
+s.wire(r4_bot, r5_top)
+# R4/R5 are centred on ISENSE's own row (isense_pin[1] == the midpoint
+# of r4_bot/r5_top below), so the tap wire back to U2 is a single
+# straight line, no jog needed.
+tap_y = (r4_bot[1] + r5_top[1]) / 2
+s.wire(isense_pin, (RX, tap_y))
+s.junction((RX, tap_y))
+s.wire(r4_top, (r4_top[0] + 12, r4_top[1]))
+s.glabel("VIOUT", r4_top[0] + 12, r4_top[1])
+gnd_y = r5_bot[1] + 5
+s.wire(r5_bot, (RX, gnd_y))
+gnd_tap(RX, gnd_y)
+
 
 # U2 PIGTAILS block removed (long-shot experiment: U2 is back on this
 # board directly - see its own placement above). JP1/JP2/JP3 used to be
 # U2's off-board stand-in; now U2 IS the board-side part, so they'd just
 # be duplicate symbols carrying labels U2 already carries on its own
-# pins. JP4/JP6 (the former on-board mates) stay in the schematic with
-# on_board=False - their own wiring still anchors TB3/TB4/R11/R13/R14/
-# R15's layout and still ERC-matches U2's labels by name, they just no
-# longer get a PCB footprint of their own.
+# pins. JP4 and JP6 (the sense/power pigtails that used to mate with
+# those, back when U2 was a separate off-board DevKitC) are dropped for
+# the same reason: U2 is on this board directly now, so there's no cable
+# run between it and the rest of this sheet any more - SW_UP/SW_DN/
+# ISENSE and +5V/+3V3/GND already reach wherever they're needed as
+# matching global labels off U2's own pins above, the same mechanism
+# WDOG/KICK use.
 
 # HANDSET INTERFACE: rocker dividers + J3 (to handset). Placed above
 # the "HANDSET (unmodified)" reference block below it, not just any
 # free gap - this is the section that actually feeds that connector,
-# so the two read as one visual unit instead of this one floating
-# unlabelled above CONTROLLER (where it used to sit, left over from
-# when U2 was still on this board and JP4 didn't exist yet).
+# so the two read as one visual unit.
 s.note("HANDSET INTERFACE", 520, 300, 2.8)
-# SW_UP/SW_DN/ISENSE all arrive here via JPSNS2 (the destination half
-# of JPSNS's pigtail, up by U2 - see above) instead of a direct wire,
-# now that U2 isn't on this board - one 3-pin connector, matching JP2
-# bundling all three onto one physical plug on the other end (a
-# separate JP6 near R4/R5 used to take ISENSE alone, which implied a
-# second cable/connector that was never actually drawn - ISENSE now
-# leaves this connector like its other two pins and just carries the
-# label over to R4/R5 the same way WDOG does).
+# SW_UP/SW_DN/ISENSE arrive here as matching global labels off U2's own
+# pins (see CONTROLLER above) - no physical pigtail connector in between
+# any more now that U2 is on this board directly (JP4, the "sense
+# pigtail" that used to sit here, is gone - see the note above). The
+# column/rows below match where JP4's own pins used to land, purely so
+# R11/R13/R14/R15/TB3/TB4 below don't have to move.
 NODEX = {PIN["SW_UP"]: 540.0, PIN["SW_DN"]: 550.0}
-JPSNS2_X = 520.0
-# Pin 1's offset from its own symbol origin is -2.54 (see JP3.offset) -
-# this Y puts pin 1 exactly on R11's row and, since TB3/R11/R14 already
-# share that same 2.54mm pitch, pin 2 lands on R14's row too.
-JPSNS2_Y = 342.0
-s.place(JP3, "JP4", "sense pigtail", JPSNS2_X, JPSNS2_Y, mirror="y",
-        val_at=(JPSNS2_X, JPSNS2_Y - 15.24), on_board=False)
+SENSE_X0 = 524.51
+SENSE_Y = {PIN["SW_UP"]: 339.09, PIN["SW_DN"]: 341.63}
 jpsns2_pins = {}
-# Mirrored so pins exit RIGHT, toward R11/R14/TB3, instead of left into
-# open space - the old left-exit layout needed a "drop down 8mm, jog
-# right" detour just to turn around, which both crossed pin 2's own
-# approach wire (the ordering fix that used to live here) and left the
-# SW_UP/SW_DN/ISENSE labels dangling off to the side instead of sitting
-# on the wire they name. With pins already facing the right way and
-# pin 1/pin 2 landing directly on R11's/R14's rows, each label can just
-# sit inline on a single straight wire per signal.
-# SW_UP/SW_DN's own labels branch off a junction on the main wire
-# instead of sitting inline on it - inline put the wire to R11/R14
-# visibly through the label (nothing wrong with it electrically, a
-# label doesn't interrupt a wire, but it reads as if the wire pierces
-# the label rather than the label just naming it) and crowded R13's own
-# junction dot since the label's rendered width reached past it. Each
-# stub is short and points away from its nearest neighbour row (up for
-# the topmost signal, down for the bottommost) so it doesn't cross
-# another row's own wire on the way to open space; the middle signal's
-# stub sits past ISENSE's own wire end instead, for the same reason.
-BRANCHX = {PIN["SW_UP"]: 530.0, PIN["SW_DN"]: 556.0}
-BRANCHDY = {PIN["SW_UP"]: -2.54, PIN["SW_DN"]: 2.54}
-for i, num in enumerate((PIN["SW_UP"], PIN["SW_DN"])):
-    p = s.pin("JP4", str(i + 1))
-    bx = BRANCHX[num]
-    s.junction((bx, p[1]))
-    s.wire((bx, p[1]), (bx, p[1] + BRANCHDY[num]))
-    s.glabel(OUT[num], bx, p[1] + BRANCHDY[num])
+for num in (PIN["SW_UP"], PIN["SW_DN"]):
+    y = SENSE_Y[num]
+    p = (SENSE_X0, y)
+    # Wire from here to NODEX is drawn below, in the R11/R14 loop - not
+    # here too, which would just double-draw the same segment.
+    s.glabel(OUT[num], SENSE_X0, y, angle=180)
     jpsns2_pins[num] = p
-# ISENSE has nowhere local to continue on to (R4/R5 are elsewhere on
-# the sheet - see below), so its wire is a plain dead-end stub with the
-# label right at its tip, same as KICK/ISENSE back at U2.
-isense_p = s.pin("JP4", "3")
-s.wire(isense_p, (isense_p[0] + 12, isense_p[1]))
-s.glabel(OUT[PIN["ISENSE"]], isense_p[0] + 12, isense_p[1])
+# ISENSE has no business in this section at all - it was only ever here
+# because it shared JP4's physical connector with SW_UP/SW_DN, not
+# because it's logically part of the handset interface. It connects
+# straight to U2 now (see CONTROLLER), so there's nothing to draw here.
 # J3 (the board-side Mini-Fit to the handset) is dropped from this sheet
 # - see symbols.py. Two 2-position screw terminals (handset signal pair,
 # handset power pair) take its place, at the exact spot its two pin
@@ -210,7 +251,7 @@ s.glabel(OUT[PIN["ISENSE"]], isense_p[0] + 12, isense_p[1])
 # HND_A/HND_B go there. TB4 pins point right, so +3V3/GND tap off to its
 # right instead (no README circuit-number constraint here like TB1/TB2
 # have, so sides are assigned for routing, not to match an external
-# reference). Same row as JP4/R11 (pin 1 shares the 2.54mm pitch too),
+# reference). Same row as SW_UP/R11 (pin 1 shares the 2.54mm pitch too),
 # so no vertical nudge is needed to land it exactly.
 s.place(TERM2, "TB3", "signal pair", 584.14, jpsns2_pins[PIN["SW_UP"]][1])
 # mirror="y": TB4's wire goes right (to +3V3/GND), not left - unmirrored,
@@ -266,11 +307,50 @@ for num, rp in ((PIN["SW_UP"], "R13"), (PIN["SW_DN"], "R15")):
         s.wire(rbot, (rbot[0], junc_y))
     s.junction((nx, junc_y))
 
+# W2: the handset pigtail - same reasoning as W1's own J2 (see SUPPLY):
+# a real Mini-Fit Jr plug (J3), crimped onto the pigtail, is a distinct
+# part from J4's fixed receptacle in the handset, and belongs on the
+# page. TB3 (signal pair) feeds pins 1/2 from the left, matching their
+# own exit side; TB4 (power pair) feeds pins 3/4 from the right, same
+# as TB2/J2.
+J3X, J3Y = 590.0, 305.0
+s.place(CONN, "J3", "on pigtail\nplug crimped here, mates with J4",
+        J3X, J3Y, val_at=(J3X, J3Y - 8.5), on_board=False)
+j3p_a, j3p_b = s.pin("J3", "1"), s.pin("J3", "2")
+j3p_3v3, j3p_gnd = s.pin("J3", "3"), s.pin("J3", "4")
+
+hnd_a, hnd_b = s.pin("TB3", "1"), s.pin("TB3", "2")
+# Jog to J3's own column first, THEN rise - arriving vertically, not
+# horizontally, so the outgoing label below (also leaving left) can't
+# retrace this same span (it did, the first time this was written).
+# J3's pins 1/2 (and 3/4) share one x column, 2.54mm apart - see J2's
+# own note above (SUPPLY) for why each pin gets its own distinct jog
+# column instead of one going straight in.
+s.wire(hnd_a, (j3p_a[0] + 2.54, hnd_a[1]), (j3p_a[0] + 2.54, j3p_a[1]), j3p_a)
+s.wire(hnd_b, (j3p_b[0] + 1.27, hnd_b[1]), (j3p_b[0] + 1.27, j3p_b[1]), j3p_b)
+
 j3_3v3, j3_gnd = s.pin("TB4", "1"), s.pin("TB4", "2")
 s.wire(j3_3v3, (j3_3v3[0] + 6, j3_3v3[1]))
 tap(j3_3v3[0] + 6, j3_3v3[1], V3)
 s.wire(j3_gnd, (j3_gnd[0] + 6, j3_gnd[1]))
 gnd_tap(j3_gnd[0] + 6, j3_gnd[1])
+s.wire(j3_3v3, (j3p_3v3[0] - 2.54, j3_3v3[1]), (j3p_3v3[0] - 2.54, j3p_3v3[1]), j3p_3v3)  # see hnd_a
+s.wire(j3_gnd, (j3p_gnd[0] - 1.27, j3_gnd[1]), (j3p_gnd[0] - 1.27, j3p_gnd[1]), j3p_gnd)
+
+s.wire(j3p_a, (j3p_a[0] - 6, j3p_a[1]))
+s.glabel("HND_A", j3p_a[0] - 6, j3p_a[1], angle=180)
+s.wire(j3p_b, (j3p_b[0] - 6, j3p_b[1]))
+s.glabel("HND_B", j3p_b[0] - 6, j3p_b[1], angle=180)
+s.wire(j3p_3v3, (j3p_3v3[0] + 6, j3p_3v3[1]))
+s.glabel("+3V3", j3p_3v3[0] + 6, j3p_3v3[1])
+# Left, not right - gnd's own incoming wire above jogs in from the
+# right (its escape column), so a rightward label here would retrace
+# part of that same span rather than continuing past it.
+# Right, not left - gnd's own jog above arrives moving rightward (same
+# direction as 3v3's), so a leftward label here would retrace it.
+s.wire(j3p_gnd, (j3p_gnd[0] + 6, j3p_gnd[1]))
+s.glabel("GND", j3p_gnd[0] + 6, j3p_gnd[1])
+s.note("W2: pigtail, 4-cond, bare wire into TB3/TB4", j3p_a[0] - 6, J3Y - 14, 1.0)
 # Centered under TB3/TB4 (note() anchors text at its left edge, so
 # offset by half the estimated string width), a bit below their own
 # row - clear of TB3/TB4's bodies but still inside the HANDSET
@@ -608,9 +688,7 @@ s.label("MRET", MRETX, d5_bottom[1] - 6)
 # interchangeable for this design (README 4.4 - either leg works,
 # current direction isn't used) - IP- (the lower pin) goes to K1 since
 # K1 sits below; IP+ (the upper pin) goes to J2's MOT_B since J2 sits
-# above. FILTER (pin 6) is left unconnected - the datasheet shows it
-# tied to GND through a cap for noise filtering, not fitted here; out
-# of scope for this migration, worth revisiting.
+# above. FILTER (pin 6) gets its own cap to GND below (C5) - see there.
 # Underneath J2 (same x) leaves ample room on every side, clear of
 # MRETX (now on the far side of K1/K2, to their left) and clear of the
 # relay bodies too.
@@ -624,6 +702,34 @@ s.wire(p_vcc, (p_vcc[0], p_vcc[1] - 6))
 tap(p_vcc[0], p_vcc[1] - 6, V5)
 s.wire(p_gnd, (p_gnd[0], p_gnd[1] + 6))
 gnd_tap(p_gnd[0], p_gnd[1] + 6)
+
+# C4/C5: the Pololu carrier this design used to sit on populated both
+# of these (a 0.1uF VCC bypass, a 1nF FILTER-to-GND cap - confirmed
+# against Allegro's own ACS712/ACS724 application circuit, conversation)
+# - with the bare chip on a generic adapter neither exists anymore, so
+# both move onto this board. Same "shunt to ground" pattern D1 uses on
+# the +29V rail: splice into the pin's own wire, drop the other leg to
+# a GND row of its own.
+C4X = p_vcc[0] + 30  # clear of both the VIOUT and FILTER stubs below
+# +3.81 (not -3.81): pin1 sits 3.81 *above* the symbol's own placement
+# point (local +y flips to absolute -y - see ACS pin-layout comment
+# above), so placing 3.81 *below* the target y lands pin1 exactly on
+# it. Getting this backwards once put C4's pin2 (GND) on top of the
+# VCC branch point instead - a dead short between the two rails.
+s.place(C_, "C4", "100n", C4X, p_vcc[1] + 3.81)
+s.wire(p_vcc, (C4X, p_vcc[1]))
+s.junction(p_vcc)
+c4_bot = s.pin("C4", "2")
+s.wire(c4_bot, (c4_bot[0], c4_bot[1] + 8))
+gnd_tap(c4_bot[0], c4_bot[1] + 8)
+
+p_filter = s.pin("U5", "6")
+C5X = p_filter[0] + 10
+s.place(C_, "C5", "1n", C5X, p_filter[1] + 3.81)
+s.wire(p_filter, (C5X, p_filter[1]))
+c5_bot = s.pin("C5", "2")
+s.wire(c5_bot, (c5_bot[0], c5_bot[1] + 8))
+gnd_tap(c5_bot[0], c5_bot[1] + 8)
 
 pk1 = (COMX["K1"], s.pin("K1", "11")[1])
 ip_minus = s.pin("U5", "3")
@@ -667,6 +773,50 @@ GND_Y = j2_vsw[1] + 16.0
 s.wire(j2_gnd, (j2_gnd[0] + 6, j2_gnd[1]), (j2_gnd[0] + 6, GND_Y))
 gnd_tap(j2_gnd[0] + 6, GND_Y)
 
+# W1: the motor pigtail - 4-conductor, bare wire at this end (into
+# TB1/TB2), a real Mini-Fit Jr plug (J2) at the other, crimped on
+# rather than soldered to the board (see conversation - J2/J3 were
+# dropped from the sheet entirely at first, on the reasoning that the
+# net-link to J1/J4 was the only thing missing; it isn't - the plug
+# itself is a real part, distinct from J1's own fixed receptacle in
+# the motor housing, and belongs on the page like J1/J4 already are).
+J2X, J2Y = 566.0, 90.0
+s.place(CONN, "J2", "on pigtail\nplug crimped here, mates with J1",
+        J2X, J2Y, val_at=(J2X, J2Y - 8.5), on_board=False)
+j2p_mota, j2p_motb = s.pin("J2", "1"), s.pin("J2", "2")
+j2p_vsw, j2p_gnd = s.pin("J2", "3"), s.pin("J2", "4")
+
+# J2's pins 1/2 (and 3/4) share one x column, 2.54mm apart - rising
+# either one of a pair straight into its own pin means that rise's
+# column passes right through the OTHER pin's position too (not just
+# near it: J2's own pin spacing is tiny next to the rise's height, so
+# the sibling pin always ends up sitting partway along the same
+# line). Both pins in a pair get their own jog column instead, clear
+# of the shared pin column and of each other, so neither rise runs
+# right over the sibling pin's own point - each still leaves a single
+# T-touch where the far pin's own label stub crosses the near pin's
+# rise (unavoidable at this pitch with a simple two-bend path; no
+# junction drawn there, so no short - same kind of crossing already
+# accepted elsewhere on this sheet, see find_crossings.py's baseline).
+s.wire(j2_mota, (j2p_mota[0] + 2.54, j2_mota[1]), (j2p_mota[0] + 2.54, j2p_mota[1]), j2p_mota)
+s.wire(j2_motb, (j2p_motb[0] + 1.27, j2_motb[1]), (j2p_motb[0] + 1.27, j2p_motb[1]), j2p_motb)
+
+s.wire(j2_vsw, (j2p_vsw[0] - 2.54, j2_vsw[1]), (j2p_vsw[0] - 2.54, j2p_vsw[1]), j2p_vsw)
+s.wire(j2_gnd, (j2p_gnd[0] - 1.27, j2_gnd[1]), (j2p_gnd[0] - 1.27, j2p_gnd[1]), j2p_gnd)
+
+# J2's own pins carry the pigtail onward to J1 (see LEG) with the same
+# matching-glabel mechanism as before - now attached to the plug
+# itself, not to the board's screw terminals.
+s.wire(j2p_mota, (j2p_mota[0] - 6, j2p_mota[1]))
+s.glabel("MOT_A", j2p_mota[0] - 6, j2p_mota[1], angle=180)
+s.wire(j2p_motb, (j2p_motb[0] - 6, j2p_motb[1]))
+s.glabel("MOT_B", j2p_motb[0] - 6, j2p_motb[1], angle=180)
+s.wire(j2p_vsw, (j2p_vsw[0] + 6, j2p_vsw[1]))
+s.glabel("+29V_RAW", j2p_vsw[0] + 6, j2p_vsw[1])
+s.wire(j2p_gnd, (j2p_gnd[0] + 6, j2p_gnd[1]))  # see j3p_gnd, HANDSET
+s.glabel("GND", j2p_gnd[0] + 6, j2p_gnd[1])
+s.note("W1: pigtail, 4-cond, bare wire into TB1/TB2", j2p_mota[0] - 6, J2Y - 14, 1.0)
+
 # ============================================================== supply ====
 # Moved here (next to TB2) instead of its own block elsewhere on the
 # sheet, and wired to TB2.1 with a literal wire instead of a same-named
@@ -681,27 +831,11 @@ gnd_tap(j2_gnd[0] + 6, GND_Y)
 # uneven gaps given how much each part's own width differs).
 s.note("SUPPLY", j2_vsw[0] + 15, 80, 2.8)
 
-# JP6: the mate for JP3's power pigtail (U2 PIGTAILS block) - the +5V
-# this board's own buck converter makes below, and the +3V3 U2's
-# onboard regulator feeds back for the rest of this board, meet here.
-# Previously JP3 had no destination at all (just floating taps onto
-# already-global rails, with nothing to show where the physical wires
-# actually land) - placed in the open gap between this heading and the
-# main 29V-to-5V row rather than tacked onto either. GND (pin 3) shares
-# its column with +3V3 (pin 2), same reasoning as JP3 itself: their
-# spans run opposite directions from adjacent rows and never overlap.
-JP6_X, JP6_Y = 650.0, 100.0
-s.place(JP3, "JP6", "power pigtail", JP6_X, JP6_Y, on_board=False)
-jp6_p5 = s.pin("JP6", "1")
-s.wire(jp6_p5, (jp6_p5[0], jp6_p5[1] - 8))
-tap(jp6_p5[0], jp6_p5[1] - 8, V5)
-jp6_p3 = s.pin("JP6", "2")
-jp6_col3g = jp6_p3[0] - 5
-s.wire(jp6_p3, (jp6_col3g, jp6_p3[1]), (jp6_col3g, jp6_p3[1] - 8))
-tap(jp6_col3g, jp6_p3[1] - 8, V3)
-jp6_pg = s.pin("JP6", "3")
-s.wire(jp6_pg, (jp6_col3g, jp6_pg[1]), (jp6_col3g, jp6_pg[1] + 8))
-gnd_tap(jp6_col3g, jp6_pg[1] + 8)
+# JP6 (power pigtail, the mate for U2's now-removed off-board power
+# feed) removed - see the note above CONTROLLER. It only ever re-tapped
+# +5V/+3V3/GND onto already-global rails with no other job, so nothing
+# takes its place: those rails are already reachable everywhere via
+# plain tap()/gnd_tap() calls, same as before.
 
 SY = j2_vsw[1]
 GAP = 25.0
@@ -713,7 +847,10 @@ GAP = 25.0
 # wall-supply/AC-DC module) itself now lives in the LEG section - it's
 # physically inside the motor housing, not on this board.
 D1X = j2_vsw[0] + GAP
-s.place(TVS, "D1", "33V bidir", D1X, SY + 6.35)
+# angle=270: TVS's real symbol has horizontal pins natively (see
+# symbols.py) - rotated here so pin 1 lands on the SY rail and pin 2
+# drops straight to GND_Y, same shunt-to-ground topology as before.
+s.place(TVS, "D1", "33V bidir", D1X, SY + 3.81, angle=270)
 s.wire(j2_vsw, s.pin("D1", "1"))
 
 C1X = D1X + GAP
@@ -778,27 +915,13 @@ c2_lo = s.pin("C2", "2")
 s.wire(c2_lo, (c2_lo[0], GND_Y))
 gnd_tap(c2_lo[0], GND_Y)
 
-# R4/R5 sit below U5's VIOUT pin now (were above) - U5 sits underneath
-# J2 with nothing below it, so that's the direction with open space,
-# rather than back up past U5's own VCC tap.
+# R4/R5 (the current-sense divider) moved next to U2's own ISENSE pin
+# in CONTROLLER, wired there with a literal wire instead of a matching
+# label - see that section. VIOUT (this pin) just needs a dead-end stub
+# of its own now, matching label, same mechanism WDOG uses.
 p_out = s.pin("U5", "7")
-RX = p_out[0] + 5.08
-s.place(R_, "R4", "10k", RX, p_out[1] + 6.35)
-s.wire(p_out, (RX, p_out[1]), s.pin("R4", "1"))
-s.place(R_, "R5", "20k", RX, p_out[1] + 19.05)
-s.wire(s.pin("R4", "2"), s.pin("R5", "1"))
-isense_y = (s.pin("R4", "2")[1] + s.pin("R5", "1")[1]) / 2
-s.wire((RX, isense_y), (RX + 30, isense_y))
-s.junction((RX, isense_y))
-# No connector here any more - ISENSE now leaves on JP4's own pin 3
-# along with SW_UP/SW_DN (one physical plug for all three, see the
-# rocker-divider section), so this end just needs the matching label,
-# the same mechanism WDOG already uses.
-s.glabel("ISENSE", RX + 30, isense_y)
-r5_bottom = s.pin("R5", "2")
-gnd_y = r5_bottom[1] + 5
-s.wire(r5_bottom, (RX, gnd_y))
-s.place(GNDS, _uref(), "GND", RX, gnd_y, hide_ref=True, hide_val=True)
+s.wire(p_out, (p_out[0] + 12, p_out[1]))
+s.glabel("VIOUT", p_out[0] + 12, p_out[1])
 
 
 # ================================================================= leg ====
@@ -817,13 +940,16 @@ s.box(358, 440, 475, 513)
 s.place(MOT, "M1", "2R5 winding", 366.08, 476, on_board=False)
 m1_plus, m1_minus = s.pin("M1", "1"), s.pin("M1", "2")
 
-# J1 - the far end of the board's TB1/TB2 pigtail (same Molex Mini-Fit
-# Jr, same Conn_02x02_Top_Bottom part - see symbols.py, J2 itself is no
-# longer drawn), sitting where it actually is: inside the leg, wired
+# J1 - the far end of the motor pigtail (J2, see SUPPLY, is the near
+# end - same Molex Mini-Fit Jr, same Conn_02x02_Top_Bottom part, see
+# symbols.py), sitting where it actually is: inside the leg, wired
 # straight to this section's own motor leads and to the PSU below,
 # instead of a same-named-label match that was never actually connected
 # to anything ("global" only means "matches by text anywhere on THIS
-# sheet" - see NETLIST.md, this is what fixes that).
+# sheet" - see NETLIST.md, this is what fixed J1-to-M1). J1-to-J2 is a
+# real, separate piece of off-board cable, not something a wire could
+# legitimately be drawn across, so that hop is a label-match instead
+# (see SUPPLY/DRIVE, J2's own pins).
 J1X, J1Y = 420.0, 476.0
 # val_at pushed further down than the library's own default (5.08) - two
 # lines now, and the default clearance was tuned for one, sitting right
@@ -832,6 +958,17 @@ s.place(CONN, "J1", "in motor housing\nmates with board pigtail (TB1/TB2)",
         J1X, J1Y, val_at=(J1X, J1Y + 6.5), on_board=False)
 j1_mota, j1_motb = s.pin("J1", "1"), s.pin("J1", "2")
 j1_vsw, j1_gnd = s.pin("J1", "3"), s.pin("J1", "4")
+# Pins 1/2's own wire down to SW3/SW4 arrives vertically (last segment),
+# so this branch escapes sideways (dx1) before rising - going straight
+# up would run back along that same column. Pins 3/4's wire from PSU1
+# arrives horizontally, so no escape needed there.
+# Escaping right (toward vsw/gnd) put both stubs inside J1's own body
+# outline (its rectangle starts right at the pin edge) - left is clear
+# all the way past SW3/D3 (their own wire leaves at a different y, not
+# this one), so both escape that way instead.
+pigtail_break(j1_mota, "MOT_A", "W1 (cont'd): from J2, elsewhere on this sheet",
+              -6, 12, -6)
+pigtail_break(j1_motb, "MOT_B", None, -10, 12, -6)
 
 # SW3/SW4 sit a bit clear of M1's own pin row (EXTRA) instead of right
 # on top of it - the M1 wire picks up a small bend to get there instead
@@ -895,6 +1032,8 @@ psu_plus, psu_minus = s.pin("PSU1", "6"), s.pin("PSU1", "3")
 midx = (psu_plus[0] + j1_vsw[0]) / 2
 s.wire(psu_plus, (midx, psu_plus[1]), (midx, j1_vsw[1]), j1_vsw)
 s.wire(psu_minus, (midx, psu_minus[1]), (midx, j1_gnd[1]), j1_gnd)
+pigtail_break(j1_vsw, "+29V_RAW", None, 0, 16, 6)
+pigtail_break(j1_gnd, "GND", None, 0, -16, 6)  # see j2_gnd, SUPPLY
 
 # Mains L/N - power.kicad_sym's generic "AC" flag reused per instance
 # (see symbols.py), same mechanism as this design's own +5V/VSW/GND taps.
@@ -969,6 +1108,30 @@ s.wire(mid_c, (mid_c[0], BOTY_C), (j4_4[0], BOTY_C), j4_4)
 # under, further out than the shared-C wire above.
 BOTY_COM = SWY + 20.0
 s.wire(down_com, (down_com[0], BOTY_COM), (j4_2[0], BOTY_COM), j4_2)
+
+# W2 (cont'd) - see TB3/TB4's own side. j4_1's own wire in is horizontal
+# (up_com, straight in) so no escape needed; j4_2/j4_3/j4_4 all arrive
+# vertically (BOTY_COM/TOPY/BOTY_C dropping straight down into the pin),
+# so each needs the sideways escape first, same reasoning as J1 above.
+# mid_a/mid_c -> +3V3/GND pairing is provisional, like MOT_A/MOT_B's own
+# order (see SUPPLY) - README doesn't pin down which OEM throw (NC vs
+# NO) is which conductor; swap the two glabels below if bring-up shows
+# the dry-contact reading inverted, nothing else needs to change.
+pigtail_break(j4_1, "HND_A", None, 0, 8, 6)
+# Note placed separately, further left - the auto position (right next
+# to the label) lands under J4.3/J4.4's own labels in this corner, close
+# enough to visually overlap them (no wire crossing, just crowded text).
+s.note("W2 (cont'd): from J3, elsewhere on this sheet", j4_1[0] - 45, j4_1[1] - 20.5, 1.0)
+pigtail_break(j4_2, "HND_B", None, 2, -8, 6)  # up (like every other
+                                               # pigtail break here) runs
+                                               # into up_com's own wire AND
+                                               # J4's own pin-tip bbox in
+                                               # this one narrow corner -
+                                               # down clears both instead,
+                                               # same "rise the other way"
+                                               # fix as the GND pins above
+pigtail_break(j4_3, "+3V3", None, 4, 13, 6)
+pigtail_break(j4_4, "GND", None, 9, 13, 6)
 
 notes = [
     "SIMPLE IN-LINE DRIVE.  The box sits in the 4-core cable and owns the winding permanently.",
