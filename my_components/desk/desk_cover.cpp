@@ -14,6 +14,7 @@ void DeskCover::setup() {
   this->relay_up_->setup();
   this->relay_down_->setup();
   this->wdt_pin_->setup();
+  this->setup_adc_();
 
   this->apply_relays_(Dir::NONE);
   this->set_duty_(0.0f);
@@ -160,12 +161,86 @@ void DeskCover::set_duty_(float duty) {
     this->pwm_->set_level(duty);
 }
 
+void DeskCover::setup_adc_() {
+  // adc_channel_ actually holds a GPIO number (see cover.py's current_pin
+  // schema) - resolve it to an ADC1 channel here rather than in every
+  // read_current_() call. ESP32-S3 ADC1: channels 0-9 map to GPIO1-10, in
+  // order - this table does not carry over to the classic ESP32 or other
+  // targets, since ADC channel-to-GPIO mapping is chip-specific.
+  if (this->adc_channel_ < 1 || this->adc_channel_ > 10) {
+    ESP_LOGE(TAG, "current_pin %u is not a valid ADC1 GPIO on the S3 (1-10)",
+              this->adc_channel_);
+    return;
+  }
+  const uint8_t ch_index = this->adc_channel_ - 1;
+
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
+  this->adc_ch_ = static_cast<adc_channel_t>(ch_index);
+
+  adc_oneshot_unit_init_cfg_t unit_cfg = {};
+  unit_cfg.unit_id = ADC_UNIT_1;
+  if (adc_oneshot_new_unit(&unit_cfg, &this->adc_unit_) != ESP_OK) {
+    ESP_LOGE(TAG, "adc_oneshot_new_unit failed");
+    return;
+  }
+
+  adc_oneshot_chan_cfg_t chan_cfg = {};
+  chan_cfg.bitwidth = ADC_BITWIDTH_DEFAULT;
+  chan_cfg.atten = ADC_ATTEN_DB_12;  // ~0-3.3V full scale
+  adc_oneshot_config_channel(this->adc_unit_, this->adc_ch_, &chan_cfg);
+
+  adc_cali_curve_fitting_config_t cali_cfg = {};
+  cali_cfg.unit_id = ADC_UNIT_1;
+  cali_cfg.chan = this->adc_ch_;
+  cali_cfg.atten = ADC_ATTEN_DB_12;
+  cali_cfg.bitwidth = ADC_BITWIDTH_DEFAULT;
+  this->adc_calibrated_ =
+      adc_cali_create_scheme_curve_fitting(&cali_cfg, &this->adc_cali_) ==
+      ESP_OK;
+#else
+  this->adc_ch_ = static_cast<adc1_channel_t>(ch_index);
+  adc1_config_width(ADC_WIDTH_BIT_12);
+  adc1_config_channel_atten(this->adc_ch_, ADC_ATTEN_DB_11);
+  esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_11, ADC_WIDTH_BIT_12,
+                           1100, &this->adc_cal_);
+  this->adc_calibrated_ = true;
+#endif
+
+  if (!this->adc_calibrated_)
+    ESP_LOGW(TAG, "ADC calibration unavailable - falling back to an "
+                  "uncalibrated raw-count estimate");
+}
+
 float DeskCover::read_current_() {
-  // Replace with a direct ESP-IDF ADC read; the exact call differs between
-  // IDF 4.x (adc1_get_raw) and 5.x (adc_oneshot_read), so this is left as
-  // the one place you adapt to your toolchain. ESPHome's `adc` sensor is
-  // far too slow for this loop.
-  return this->amps_.load();
+  int raw = 0;
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
+  if (this->adc_unit_ == nullptr ||
+      adc_oneshot_read(this->adc_unit_, this->adc_ch_, &raw) != ESP_OK)
+    return this->amps_.load();
+#else
+  raw = adc1_get_raw(this->adc_ch_);
+#endif
+
+  int mv;
+  if (this->adc_calibrated_) {
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
+    adc_cali_raw_to_voltage(this->adc_cali_, raw, &mv);
+#else
+    mv = static_cast<int>(esp_adc_cal_raw_to_voltage(raw, &this->adc_cal_));
+#endif
+  } else {
+    // Uncalibrated fallback: 12-bit reading over a ~3.3V full-scale span.
+    // Less accurate than the calibrated path, but keeps the loop running
+    // rather than faulting on a chip without eFuse calibration data.
+    mv = static_cast<int>(raw * 3300.0f / 4095.0f);
+  }
+
+  // Undo the R1(10k)/R2(20k) divider, then the ACS712ELCTR-05B's own 2.5V
+  // bias and 185mV/A sensitivity (Allegro's datasheet figure, see README
+  // §4.4) - this part's transfer function really is linear over its full
+  // range, not a lookup table.
+  const float sensor_mv = mv * (10.0f + 20.0f) / 20.0f;
+  return (sensor_mv - 2500.0f) / 185.0f;
 }
 
 void DeskCover::enter_(DeskState s) {

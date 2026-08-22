@@ -47,7 +47,7 @@ them without explicit discussion.
 3. **Do not fit a larger PSU.** The stock 29 V / 1.8 A supply current-limits,
    and that limit is the desk's only collision protection. The motor's thermal
    rating was chosen around it.
-4. **Boot state is defined by hardware.** R1/R2/R6 hold the drive lines safe
+4. **Boot state is defined by hardware.** R8/R9/R10 hold the drive lines safe
    before firmware runs. They must stay on non-strapping GPIOs.
 5. **ISENSE must be on ADC1.** ADC2 is unusable while WiFi is active.
 
@@ -56,7 +56,7 @@ them without explicit discussion.
 - **`MOT_A` is the conductor that must be POSITIVE to raise the desk**
   (connector circuit 2). `MOT_B` is circuit 1. Defining it by function means
   the schematic is correct by construction.
-- **K1 = up, K2 = down.** Chain: `DIR_A → U8 → Q2 → K1 = up`. This matches
+- **K1 = up, K2 = down.** Chain: `DIR_A → U3 → Q3 → K1 = up`. This matches
   `relay_up:` / `relay_down:` in `desk.yaml`. If the relay assignment ever
   changes, the YAML keys must change with it.
 - **Both relays off = brake** (both winding ends on VSW), matching the OEM
@@ -128,8 +128,8 @@ Don't remove that line.
 
 ## Open work
 
-- `read_current_()` in `desk_cover.cpp` is a stub. The ADC call differs
-  between IDF 4.x and 5.x — that is the one place to adapt.
+- `read_current_()` in `desk_cover.cpp` is implemented (IDF 4.x/5.x both
+  handled via a preprocessor guard) but not yet compiled or flash-tested.
 - Phase 2 (position feedback, presets) is not started. See README §8.
 
 ## Working style

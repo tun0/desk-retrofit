@@ -7,6 +7,15 @@
 #include "esphome/components/cover/cover.h"
 #include "esphome/components/output/float_output.h"
 
+#include "esp_idf_version.h"
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
+#include "esp_adc/adc_oneshot.h"
+#include "esp_adc/adc_cali.h"
+#else
+#include "driver/adc.h"
+#include "esp_adc_cal.h"
+#endif
+
 namespace esphome {
 namespace desk {
 
@@ -65,6 +74,7 @@ class DeskCover : public cover::Cover, public Component {
   void tick_();              // one iteration of the state machine
   void apply_relays_(Dir d);
   void set_duty_(float duty);
+  void setup_adc_();
   float read_current_();
   void enter_(DeskState s);
   void fault_(const char *why);
@@ -76,7 +86,18 @@ class DeskCover : public cover::Cover, public Component {
   GPIOPin *relay_up_{nullptr};
   GPIOPin *relay_down_{nullptr};
   GPIOPin *wdt_pin_{nullptr};
-  uint8_t adc_channel_{0};
+  uint8_t adc_channel_{0};  // GPIO number (see cover.py); resolved to an
+                            // ADC1 channel enum in setup_adc_(), not itself
+                            // a channel index
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
+  adc_oneshot_unit_handle_t adc_unit_{nullptr};
+  adc_cali_handle_t adc_cali_{nullptr};
+  adc_channel_t adc_ch_{ADC_CHANNEL_0};
+#else
+  esp_adc_cal_characteristics_t adc_cal_{};
+  adc1_channel_t adc_ch_{ADC1_CHANNEL_0};
+#endif
+  bool adc_calibrated_{false};
 
   uint32_t ramp_up_ms_{500}, ramp_down_ms_{300}, settle_ms_{50};
   uint32_t travel_mm_{500}, max_run_ms_{25000};

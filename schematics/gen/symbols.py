@@ -159,24 +159,40 @@ def box(name, prefix, left, right, w=25.4):
                hide_names=False, ref_dy=h / 2 + 2.6, val_dy=-h / 2 - 2.6)
 
 
-# Real part: LM2596T-5 (fixed 5V, TO-220-5 THT) - LM2596T-12 is the base
-# symbol it `extends` (same "thin wrapper" pattern as 74HC123/BC337),
-# importing it gets the real pins/graphics; place() still sets the
-# instance's own Value. This library snapshot has no HV (high-input-
-# voltage) variant, so this is a pin-compatible placeholder for the
-# actual LM2596HV, same reasoning as 74LS08 standing in for 74HC08 (see
-# TODO.md). Real pinout adds two pins the hand-drawn box never had: FB
-# (feedback - must be wired to VOUT for the regulator to work at all,
-# fixed-output parts still sense their own output externally) and
-# ~ON/OFF (must be tied low for always-on operation, floating is not a
-# valid state) - both wired in sch.py.
+# Real part: LM2576HVS-5.0/NOPB (fixed 5V, TO-263-5 SMD) - LM2596T-12 is
+# the base symbol it `extends` (same "thin wrapper" pattern as 74HC123/
+# BC337), importing it gets the real pins/graphics; place() still sets
+# the instance's own Value. This library snapshot has no HV (high-input-
+# voltage) variant of its own, so this remains a pin-compatible
+# placeholder symbol - same reasoning as 74LS08 standing in for 74HC08
+# (see TODO.md) - but it's now standing in for the SMD HV part, not the
+# THT one. Switched from LM2596HV/TO-220-5 - see conversation: the true
+# through-hole HV part (LM2596HVT/LM2576HVT) turned out to not be
+# practically sourceable anywhere checked (Reichelt, TME, Mouser, Farnell
+# direct, sinuss.nl all came up empty or unconfirmed for the T-suffix
+# THT part), while LM2576HVS-5.0/NOPB (S-suffix, TO-263-5 SMD) is in
+# real, confirmed stock at TME. TO-220-5 and TO-263-5 share the identical
+# pin function assignment (1=VIN, 2=Output, 3=GND, 4=FB, 5=ON/OFF) -
+# checked directly against TI's own LM2596 datasheet, both packages
+# documented side by side with one shared pin table - so nothing below
+# needed rewiring, only the footprint. Real pinout adds two pins the
+# hand-drawn box never had: FB (feedback - must be wired to VOUT for the
+# regulator to work at all, fixed-output parts still sense their own
+# output externally) and ~ON/OFF (must be tied low for always-on
+# operation, floating is not a valid state) - both wired in sch.py.
 BUCK = import_symbol(f"{KICAD_SYMBOLS}/Regulator_Switching.kicad_sym",
                      "LM2596T-12", prefix="U")
-# Bare chip (TO-220-5), not a buck module - the real pinout wired here
-# (FB, ~ON/OFF) only exists on the bare part; a prebuilt module would
-# only expose VIN/VOUT/GND. README 6.5's "modules with headers" line
-# lumped this in with U2/relays incorrectly - fix that wording too.
-BUCK.footprint = "Package_TO_SOT_THT:TO-220-5_Vertical"
+# SMD (TO-263-5, gull-wing leads + a thermal tab tied to pin 3/GND), not
+# a buck module - the real pinout wired here (FB, ~ON/OFF) only exists
+# on the bare part; a prebuilt module would only expose VIN/VOUT/GND.
+# README 6.5's "modules with headers" line lumped this in with U2/relays
+# incorrectly - fix that wording too. Package_TO_SOT_SMD.pretty's
+# TO-263-5_TabPin3 - "TabPin3" matches this part's own pin-3-is-GND
+# convention exactly (checked against the footprint's real pads, not
+# assumed from the name). No text/reflow needed to hand-solder this: 5
+# large gull-wing leads at TO-220-like pitch, only the thermal tab needs
+# extra heat/dwell time - see conversation.
+BUCK.footprint = "Package_TO_SOT_SMD:TO-263-5_TabPin3"
 # OUT (pin 2) is generically typed "output" in the library, not
 # "power_out" - accurate for an adjustable part where OUT could feed
 # anything, but this fixed-5V regulator's OUT *is* the +5V source, and
@@ -298,16 +314,23 @@ BJT_NPN.footprint = "Package_TO_SOT_THT:TO-92_Wide"
 BJT_PNP = import_symbol(f"{KICAD_SYMBOLS}/Transistor_BJT.kicad_sym",
                         "Q_PNP_CBE", prefix="Q")
 BJT_PNP.footprint = "Package_TO_SOT_THT:TO-92_Wide"
-# Real part: ACS724xLCTR-05AB (ACS712xLCTR-05B is the base symbol it
-# `extends`, same "thin wrapper" pattern as 74HC123/BC337 - importing the
-# base gets the real pins/graphics; place() still sets the instance's own
-# Value to "ACS724xLCTR-05AB"). Real pinout is fixed: VCC top, GND
-# bottom, IP+/IP- both on the left (stacked, IP+ above IP-), VIOUT/FILTER
-# both on the right - unlike the old hand-drawn placeholder, which put
-# VCC/GND on the left and everything else on the right. See
-# sch.py for which of IP+/IP- ends up facing K1 vs J2 (the part
-# doesn't care which way current flows through it for this design - see
-# README 4.4 - so it's picked for routing, not signal sense).
+# Real part: ACS712ELCTR-05B (the library symbol is literally named after
+# this part - "thin wrapper" pattern isn't even needed here, unlike 74HC123/
+# BC337). Switched from the ACS724xLCTR-05AB this design used earlier -
+# see conversation: the ACS724 bare chip proved nearly unsourceable (only
+# one supplier had it, in uncertain quantity/price), while ACS712ELCTR-05B
+# is in real stock (thousands of units) at three suppliers already in
+# rotation for this project. Checked directly against BOTH datasheets,
+# pin-by-pin, before switching - not assumed from the similar part number
+# or the library's own "extends" relationship: ACS712 and ACS724 share the
+# *exact same* pinout (1,2=IP+, 3,4=IP-, 5=GND, 6=FILTER, 7=VIOUT, 8=VCC),
+# so this is a straight substitution, no rewiring needed anywhere below.
+# Real pinout is fixed: VCC top, GND bottom, IP+/IP- both on the left
+# (stacked, IP+ above IP-), VIOUT/FILTER both on the right - unlike the old
+# hand-drawn placeholder, which put VCC/GND on the left and everything else
+# on the right. See sch.py for which of IP+/IP- ends up facing K1 vs J2 (the
+# part doesn't care which way current flows through it for this design -
+# see README 4.4 - so it's picked for routing, not signal sense).
 # ref_dy/val_dy overridden (dx/justify left as the library specifies):
 # the library's own stored dy (11.43/8.89) sits *inside* the VCC pin's
 # own name+number text (pin tips already reach 10.16) and renders
@@ -355,10 +378,18 @@ CONN = import_symbol(f"{KICAD_SYMBOLS}/Connector_Generic.kicad_sym",
 # terminal drop into an existing pair's wiring unchanged.
 TERM2 = import_symbol(f"{KICAD_SYMBOLS}/Connector.kicad_sym",
                       "Screw_Terminal_01x02", prefix="TB")
-# 5.00mm pitch - a common, easy-to-source real terminal block pitch,
-# unrelated to the symbol's own 2.54mm drawn pin spacing (schematic
-# layout only; footprint pads match symbol pins by number, not position).
-TERM2.footprint = "TerminalBlock:TerminalBlock_MaiXu_MX126-5.0-02P_1x02_P5.00mm"
+# Originally 5.00mm pitch (MaiXu MX126-5.0-02P) for sourceability: a
+# common, easy-to-source real terminal block pitch, unrelated to the
+# symbol's own 2.54mm drawn pin spacing (schematic layout only -
+# footprint pads match symbol pins by number, not position). Switched
+# to a real 2.54mm-pitch part instead once one was actually bought
+# (Degson DG308-2.54-02P-14-00A(H), via Reichelt) - the Xinya
+# XY308-2.54-2P footprint below is a verified clone-part match for it
+# (same "308-series" pitch/pin-count family, pad geometry checked
+# directly against Degson's confirmed straight/0° mount, not just
+# matched by name - see conversation). Real pins are 0.8x0.5mm
+# rectangular; this footprint's 1.2mm round drill clears them fine.
+TERM2.footprint = "TerminalBlock:TerminalBlock_Xinya_XY308-2.54-2P_1x02_P2.54mm_Horizontal"
 # U2's 2x22 header is a genuine copper-layer capacity wall: every
 # crossing point between its margin and the rest of the board is used
 # up by other nets, and even a connector placed right at U2 doesn't

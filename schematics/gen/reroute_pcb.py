@@ -4,7 +4,9 @@
 For experimenting with placement: drag footprints around in KiCad's PCB
 editor (or move them via the pcbnew API), save, then run this script. It
 throws away all existing tracks/vias/zones, re-routes with Freerouting,
-and refills both ground pours plus a keepout around every mounting hole
+widens any undersized SMD-fanout stub and drops any single-layer
+dangling via Freerouting's own fanout stage leaves behind, and refills
+both ground pours plus a keepout around every mounting hole
 (MOUNTING_HOLE_KEEPOUT_MM) - the same manual sequence this session used
 for every placement change, now in one command.
 
@@ -277,6 +279,57 @@ import pcbnew
 b = pcbnew.LoadBoard({clean_path!r})
 ok = pcbnew.ImportSpecctraSES(b, {ses_path!r})
 assert ok, "ImportSpecctraSES failed"
+
+# Freerouting's own SMD-pin fanout stage (escaping a surface-mount pad
+# onto the routing grid) doesn't reliably respect the DSN width rule -
+# checked directly (see conversation, U1's TO-263-5 swap): 3 short stub
+# segments came back at 0.375mm against this board's 0.5mm netclass
+# floor. Width is a floor-only fix (never narrows a wider, intentional
+# power-net segment - see POWER_TRACK_WIDTH_MM above - only ever raises
+# a too-thin one up to the base minimum).
+min_width = pcbnew.FromMM({TRACK_WIDTH_MM})
+widened = 0
+for t in b.Tracks():
+    if t.Type() == pcbnew.PCB_TRACE_T and t.GetWidth() < min_width:
+        t.SetWidth(min_width)
+        widened += 1
+if widened:
+    print(f"widened {{widened}} undersized fanout stub(s) to {TRACK_WIDTH_MM}mm")
+
+# Same fanout stage sometimes leaves a via that only ever touches copper
+# (track or filled zone) on ONE of its two spanned layers - provably not
+# completing a layer transition (also checked directly: one such via
+# had 2 F.Cu tracks and zero B.Cu tracks). Safe to remove: if it were
+# carrying the net across layers, the other layer would show it.
+def _touches_layer(b, pos, net, layer_name):
+    for t in b.Tracks():
+        if (t.Type() == pcbnew.PCB_TRACE_T and t.GetNetname() == net
+                and t.GetLayerName() == layer_name
+                and (min((t.GetStart() - pos).EuclideanNorm(),
+                         (t.GetEnd() - pos).EuclideanNorm()) < 1000)):
+            return True
+    layer_id = pcbnew.F_Cu if layer_name == "F.Cu" else pcbnew.B_Cu
+    for zone in b.Zones():
+        if (not zone.GetIsRuleArea() and zone.IsOnLayer(layer_id)
+                and zone.GetNetname() == net
+                and zone.HitTestFilledArea(layer_id, pos)):
+            return True
+    for fp in b.GetFootprints():
+        for pad in fp.Pads():
+            if (pad.GetNetname() == net
+                    and layer_id in pad.GetLayerSet().Seq()
+                    and (pad.GetPosition() - pos).EuclideanNorm() < 1000):
+                return True
+    return False
+
+dangling = [v for v in list(b.Tracks()) if v.Type() == pcbnew.PCB_VIA_T
+            and not (_touches_layer(b, v.GetPosition(), v.GetNetname(), "F.Cu")
+                     and _touches_layer(b, v.GetPosition(), v.GetNetname(), "B.Cu"))]
+for v in dangling:
+    b.Remove(v)
+if dangling:
+    print(f"removed {{len(dangling)}} dangling via(s) touching only one copper layer")
+
 b.Save({out_path!r})
 n_tracks = sum(1 for t in b.Tracks() if t.Type() == pcbnew.PCB_TRACE_T)
 n_vias = sum(1 for t in b.Tracks() if t.Type() == pcbnew.PCB_VIA_T)

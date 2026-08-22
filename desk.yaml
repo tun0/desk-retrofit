@@ -5,7 +5,7 @@ esphome:
   name: standing-desk
 
 esp32:
-  board: esp32dev
+  board: esp32-s3-devkitc-1  # verify against the exact N16R8 variant received
   framework:
     type: esp-idf
 
@@ -25,7 +25,7 @@ ota:
 output:
   - platform: ledc
     id: motor_pwm
-    pin: GPIO27
+    pin: GPIO42            # PWM, see schematics/gen/sch.py SIGNAL_GPIO
     frequency: 20000Hz
 
 cover:
@@ -34,13 +34,13 @@ cover:
     id: desk1
     pwm: motor_pwm
     relay_up:
-      number: GPIO21
-      inverted: false      # set true if your relay module is active-low
+      number: GPIO39       # DIR_A
+      inverted: false      # fixed by this board's own drive polarity, see README §7.3/§6.3
     relay_down:
-      number: GPIO22
+      number: GPIO40       # DIR_B
       inverted: false
-    watchdog_pin: GPIO19
-    current_pin: 35        # ADC1 only; ADC2 is unusable with WiFi
+    watchdog_pin: GPIO4    # KICK
+    current_pin: 2         # ISENSE, ADC1_CHANNEL_1 on the S3 - ADC2 is unusable with WiFi
     ramp_up_ms: 500
     ramp_down_ms: 300
     settle_ms: 50
@@ -61,14 +61,14 @@ sensor:
 binary_sensor:
   - platform: gpio
     id: rocker_up
-    pin: {number: GPIO32, mode: INPUT_PULLUP, inverted: true}
+    pin: {number: GPIO9, mode: INPUT_PULLUP, inverted: true}   # SW_UP
     on_press:
       then: [cover.open: desk1]
     on_release:
       then: [cover.stop: desk1]
   - platform: gpio
     id: rocker_down
-    pin: {number: GPIO33, mode: INPUT_PULLUP, inverted: true}
+    pin: {number: GPIO10, mode: INPUT_PULLUP, inverted: true}  # SW_DN
     on_press:
       then: [cover.close: desk1]
     on_release:

@@ -85,7 +85,7 @@ removes that entirely.
 **Not implemented — a design change, not a documentation fix. Needs
 discussion before it goes into the schematic.**
 
-U3 is dual (74HC123, §5.7) and only one channel is used, for the 250 ms
+U2 is dual (74HC123, §5.7) and only one channel is used, for the 250 ms
 watchdog. The spare channel could provide a second, independent timeout: a
 ~30 s monostable retriggered by "any drive line active," hard-limiting how
 long the desk can run continuously.
@@ -331,8 +331,8 @@ and the relays take milliseconds to release.
 ### 5.7 74HC122 for the watchdog, instead of 74HC123
 
 Functionally the better fit: a single-channel retriggerable monostable with
-overriding clear, and its internal 10k timing resistor would eliminate R3,
-leaving only C3. Considered as a replacement for the dual 74HC123 U3 uses
+overriding clear, and its internal 10k timing resistor would eliminate R7,
+leaving only C1. Considered as a replacement for the dual 74HC123 U2 uses
 (only one of its two channels is populated).
 
 **Discontinued in the HC family.** Searches for an HC122 datasheet return the

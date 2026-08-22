@@ -143,14 +143,19 @@ viewed INTO the mating face, latch uppermost:
 The plug, viewed into *its* mating face, is the left-right mirror of this.
 Never carry a "left and right" description across from one half to the other.
 
-> **This numbering is a project-local convention defined by the diagram above.**
-> The housings carry no legible moulded numbers, and Molex's own circuit
-> numbering for Mini-Fit Jr. may differ. Inside this project the convention is
-> consistent; do **not** assume it matches a Molex drawing or a pre-made cable
-> assembly.
+> **This numbering matches Molex's own, confirmed against the real sales
+> drawing (SD-5557-003, also cited in `NETLIST.md` for the symbol pin
+> order).** Its "CIRCUIT SIZE LAYOUT" table shows circuits 1/2 in the row
+> nearest the latch and 3/4 in the row away from it, viewed into the mating
+> face with the latch uppermost — the identical reference frame and
+> assignment used above. The housings themselves still carry no legible
+> moulded numbers, so this was derived from the drawing's orientation
+> reference, not read off the part; a pre-made cable assembly could still
+> use different circuit numbers internally, so don't assume one matches
+> without checking.
 
-Because the numbering lives only in this document, **mark the connector
-physically**: a dab of paint or nail varnish on the MOT_A cavity. Then the
+Even with the numbering confirmed, **mark the connector physically**: a
+dab of paint or nail varnish on the MOT_A cavity. Then the
 mark is the definition and no orientation reasoning is ever needed again. The
 housings are polarised, so the box itself cannot be mated the wrong way round.
 
@@ -270,16 +275,22 @@ that. Practical consequences:
 ### 2.5 The as-found circuit
 
 ```
-        V+ ──┬──────────────┬──────────
-             │              │
-           [SW1]          [SW2]          two SPDT rockers
-        UP   │ COM      COM │  DOWN      NC → V+  (rest = brake)
-             │              │            NO → V−
-             │              │
-             ├─[LIM_top ∥ D_down]─(M)─[LIM_bot ∥ D_up]─┤
-             │                                          │
-        V− ──┴──────────────┴──────────
+SW3 (UP rocker, SPDT):
+    NC ── V+
+    NO ── V−
+    COM ── [LIM_top ∥ D_down] ──┐
+                                 │
+                                (M)
+                                 │
+SW4 (DOWN rocker, SPDT):         │
+    NC ── V+                     │
+    NO ── V−                     │
+    COM ── [LIM_bot ∥ D_up] ─────┘
 ```
+
+At rest both rockers sit on NC (→ V+), tying both winding ends to the
+positive rail — that's the brake state. Pressing a rocker moves its COM
+to NO (→ V−) instead, which is what drives the motor.
 
 Not kept as a separate schematic file — this circuit is fully captured by
 the measurements above and the diagram, and the stock wiring is unmodified
@@ -324,17 +335,17 @@ Schematic: `desk.kicad_sch` / `.pdf`.
 ### 4.1 Topology
 
 ```
-PSU 29V ──[F1]──┬── VSW rail
+PSU 29V ────────┬── VSW rail
                 │
                 ├── buck ── +5V ── ESP32
                 │
-          [K1]──┴──[K2]        two SPDT relays, NC→VSW, NO→MRET
-            │       │
-            └─ winding ─┘      via limit switches in the leg
+         [K1]───┴────[K2]        two SPDT relays, NC→VSW, NO→MRET
+          │           │
+          └─ winding ─┘      via limit switches in the leg
                 │
-              MRET ──[Q1]── GND    low-side PWM
+              MRET ──[Q5]── GND    low-side PWM
                 │
-              [D5] freewheel to VSW
+              [D1] freewheel to VSW
 ```
 
 ### 4.2 Relay truth table
@@ -346,12 +357,13 @@ PSU 29V ──[F1]──┬── VSW rail
 | off | off | both winding ends on VSW → **brake** (matches OEM rest state, and is the boot state) |
 | **on** | off | MOT_B to return, MOT_A stays positive → **UP** |
 | off | **on** | MOT_A to return, MOT_B stays positive → **DOWN** |
-| on | on | both ends on MRET → coast if Q1 off, brake to ground if on |
+| on | on | both ends on MRET → coast if Q5 off, brake to ground if on |
 
 No combination shorts the supply.
 
-The signal chain therefore runs `DIR_A → U8 → Q2 → K1 = up` and
-`DIR_B → U9 → Q3 → K2 = down`, which is what `relay_up:` and `relay_down:` in
+The signal chain therefore runs `DIR_A → U3 → Q3 → K1 = up` and
+`DIR_B → U3 → Q4 → K2 = down` (same chip, different gate units - see
+NETLIST.md), which is what `relay_up:` and `relay_down:` in
 `desk.yaml` are wired to. The current sensor sits in the K1 (MOT_B) leg; either
 leg works, since it only needs to be inside the freewheel loop.
 
@@ -364,19 +376,22 @@ up/down survives alongside the screen.
 
 ### 4.4 Current sensing
 
-An **ACS724-5AB** sits in the motor leg, *not* in the FET return. With low-side
+An **ACS712ELCTR-05B** sits in the motor leg, *not* in the FET return (switched
+from the ACS724-5AB this design used earlier — see §6.5/§6.6; same Hall-effect
+family, pin-identical, chosen for real stock availability). With low-side
 chopping the FET only carries current during the on-time; freewheel current
 bypasses it entirely, so a low-side shunt would read a chopped fraction and
 need synchronous sampling. In the motor leg the sensor is inside the freewheel
 loop and reads true motor current continuously.
 
-Its output is centred at 2.5 V and reaches ~3.7 V at 3 A, over the ADC limit,
-so R4/R5 divide it down. **ISENSE must be on ADC1** — ADC2 is unusable while
-WiFi is active.
+Its output is centred at 2.5 V, 185 mV/A (Allegro's own datasheet figure for
+this exact part), reaching ~3.4 V at the full ±5 A range - over a comfortable
+ADC margin, so R1/R2 (10k/20k) divide it down to a ~2.3 V max. **ISENSE must
+be on ADC1** — ADC2 is unusable while WiFi is active.
 
 ### 4.5 Failsafe layer
 
-- **Boot state.** R1/R2/R6 hold all three drive lines at "off" before firmware
+- **Boot state.** R8/R9/R10 hold all three drive lines at "off" before firmware
   runs. These *must* sit on non-strapping GPIOs — on the classic ESP32 avoid
   GPIO0, 2, 12 and 15, since a pull resistor there fights the bootloader and
   GPIO12 pulled high selects the wrong flash voltage. The S3's strapping set
@@ -385,10 +400,10 @@ WiFi is active.
   drive lines through a 74HC08. The ESP32 must keep kicking it. This sits
   **downstream of the MCU** deliberately: LEDC PWM keeps running in hardware
   after a firmware hang, so stopping PWM in software is not a safety measure.
-- **Sequencing.** Relays change state only with Q1 off and current decayed
+- **Sequencing.** Relays change state only with Q5 off and current decayed
   (~50 ms). Switching contacts under a couple of amps of inductive DC is how
   relays weld, and a welded direction relay on a desk is a genuinely bad
-  failure. On a watchdog trip this holds automatically: Q1 turns off in
+  failure. On a watchdog trip this holds automatically: Q5 turns off in
   microseconds while relays take milliseconds to release.
 - **Coast is safe.** Loss of drive leaves the desk where it is, because the
   spindle is self-locking. This is why the stock desk isn't dangerous despite
@@ -432,10 +447,10 @@ Recorded because several later conclusions only make sense in light of these.
    they avoid this. The real problem was that *signals* were labelled rather
    than wired.
 8. **Planned an "ESP32 devkit + display" (CYD).** This board lives under the
-   desk, not somewhere a display is ever seen, so U2 is a bare
+   desk, not somewhere a display is ever seen, so U1 is a bare
    ESP32-S3-DevKitC instead. A display, if ever wanted, would be a separate
    peripheral mounted on the desk itself, not part of this board.
-9. **Specified Q1 as IRLB8721.** Caught by an external review, not by this
+9. **Specified Q5 as IRLB8721.** Caught by an external review, not by this
    project's own process — the schematic still had it after the part was
    supposedly already swapped. IRLB8721's 30 V VDSS doesn't clear the 29–30 V
    rail once flyback clamping is accounted for; fixed to IRLZ44N (55 V). See
@@ -466,17 +481,17 @@ Rough EUR incl. BTW, Netherlands. Prices are budgeting figures, not quotes.
 |---|---|---|
 | ESP32-S3-DevKitC | bare devkit, no display — see §5 | €5–15 |
 | 2x SRD-05VDC-SL-C relay | bare relay, not a driver-included module — this design drives the coil directly, see NETLIST.md Drive section | €3–5 |
-| 2x 2N7000 MOSFET | relay coil drivers (Q2/Q3), TO-92 — through-hole | €1–2 |
+| 2x 2N7000 MOSFET | relay coil drivers (Q3/Q4), TO-92 — through-hole | €1–2 |
 | IRLZ44N MOSFET | logic-level, 55V — see §6.2 | €1–2 |
 | BC337 + BC327 | discrete gate driver push-pull — see §6.2 | €1–2 |
 | 74HC123 + 74HC08 | watchdog and gating | €1–3 |
 | SB560 Schottky | freewheel | <€1 |
-| 2x 1N4148 | relay coil flyback diodes (D2/D6), DO-35 | <€1 |
-| ACS724xLCTR-05AB (bare) + SOIC-8→DIP-8 adapter | bidirectional, 5A — see §4.4/§6.5; the Pololu carrier this used to be is dropped, its 2 caps (C4/C5) now on the main board instead; or 10 mΩ shunt + INA240, similar cost | €4–8 |
-| LM2596HV buck | **must** be rated >40 V in | €4–8 |
-| TVS 33 V bidirectional | D1 — no fuse fitted, see §6.1 | <€1 |
+| 2x 1N4148 | relay coil flyback diodes (D2/D3), DO-35 | <€1 |
+| ACS712ELCTR-05B (bare) + SOIC-8→DIP-8 adapter | bidirectional, 5A — see §4.4/§6.5; switched from the ACS724xLCTR-05AB this design used earlier for real stock availability (pin-identical, see §6.6); the Pololu carrier is dropped either way, its 2 caps (C2/C3) now on the main board instead; or 10 mΩ shunt + INA240, similar cost | €2–5 |
+| LM2576HVS-5.0 buck | **must** be the true HV variant (60V input) — see §6.1/§6.5; SMD (TO-263-5), not the THT part this design used earlier, which proved unsourceable at hobbyist quantities | €6–9 |
+| TVS 33 V bidirectional | D4 — no fuse fitted, see §6.1 | <€1 |
 | Passives | resistors, caps | €4–8 |
-| 4x 2-position screw terminal | 2.54mm pitch, board-side termination (TB1-TB4) — see §6.4 | €2–4 |
+| 4x 2-position screw terminal | 2.54mm pitch, board-side termination (TB1, TB2, TB4, TB5) — see §6.4 | €2–4 |
 | Mini-Fit Jr. housings + terminals | 2 mating pairs, each now on a short pigtail off the board rather than a board-mount connector — see §6.4 | €3–6 |
 | PCB blank, 70×100mm pre-cut copper-clad (2-layer) | milled, not fab-house ordered — see §6.5; SHOPPING_LIST.md flags this as still needing a specific supplier | €5–10 |
 | **Total** | | **€25–100** |
@@ -498,11 +513,11 @@ already current-limits at 1.8 A — that limit is this design's only collision
 protection, already relied on elsewhere (§4.4, `CLAUDE.md`'s own hard
 invariants) — so a fuse adds little on top of it while being one more
 embedded part to replace if it ever blows. The OEM desk never had one
-either. D1 (33 V bidirectional TVS) stays.
+either. D4 (33 V bidirectional TVS) stays.
 
-### 6.2 Q1: voltage rating first, then the gate driver
+### 6.2 Q5: voltage rating first, then the gate driver
 
-**Q1 is IRLZ44N (55 V), not IRLB8721 (30 V).** The IRLB8721 is a common
+**Q5 is IRLZ44N (55 V), not IRLB8721 (30 V).** The IRLB8721 is a common
 default for "logic-level MOSFET," but its 30 V VDSS doesn't clear this
 29 V nominal / 30 V unloaded rail — at PWM turn-off the freewheel diode
 clamps the drain to VSW plus a diode drop, putting it at or over absolute
@@ -512,18 +527,18 @@ still top out at 30 V.
 
 The gate driver still isn't optional: at 3.3 V Vgs a logic-level MOSFET is
 only partially enhanced, and at 20 kHz that's how you cook a part that
-would otherwise dissipate under 0.1 W. This design drives Q1 from a
+would otherwise dissipate under 0.1 W. This design drives Q5 from a
 discrete BC337/BC327 push-pull (not an IC — see `schematics/gen/symbols.py`),
 fed 5 V through the AND gate output. Avoid the ubiquitous IRF520 "MOSFET
 trigger" modules — that FET isn't logic-level at all.
 
 ### 6.3 K1/K2 are bare relays, not a driver-included module
 
-**This design drives the coil directly** (Q2/Q3 discrete transistor
-switches, D2/D6 flyback diodes — see NETLIST.md's Drive section), not
+**This design drives the coil directly** (Q3/Q4 discrete transistor
+switches, D2/D3 flyback diodes — see NETLIST.md's Drive section), not
 through a prebuilt "2-channel relay module" board. Those Arduino-kit
 modules already include their own opto-isolated input, driver transistor
-and flyback diode, which would make Q2/Q3/D2/D6 redundant rather than
+and flyback diode, which would make Q3/Q4/D2/D3 redundant rather than
 complementary if one were used here — don't substitute one in without
 also removing this board's own driver circuit. What to check when buying
 the bare relay itself:
@@ -575,7 +590,7 @@ trusting circuit numbering. One reversed pair swaps the rails.
 
 **The board itself doesn't carry a Mini-Fit connector at all.** Each side
 (motor housing, handset) terminates on the board in a 2-position screw
-terminal instead (TB1-TB4 — 2.54mm pitch, solders straight onto perfboard,
+terminal instead (TB1, TB2, TB4, TB5 — 2.54mm pitch, solders straight onto perfboard,
 no crimp tool needed for board assembly). A short pigtail, crimped
 separately on the bench, carries each pair from its screw terminal to the
 actual Mini-Fit half (still needed, still built exactly as described
@@ -594,8 +609,8 @@ Substitution criterion is the **package**, not just the part:
 
 | Part | Through-hole option |
 |---|---|
-| 74HC123 | `74HC123N` / `SN74HC123N`, DIP-16 |
-| 74HC08 | `SN74HC08N`, DIP-14 |
+| 74HC123 | `74HC123N` / `SN74HC123N`, DIP-16, socketed |
+| 74HC08 | `SN74HC08N`, DIP-14, socketed |
 | BC337 / BC327 | TO-92 (already through-hole) |
 | IRLZ44N | TO-220 |
 | 2N7000 | TO-92 |
@@ -603,48 +618,90 @@ Substitution criterion is the **package**, not just the part:
 | TVS 33 V | `P6KE33CA` or `1.5KE33CA`, axial |
 | Coil flyback | `1N4148`, DO-35 |
 | SRD-05VDC-SL-C relay | bare relay, TO-5-ish THT (EN50005/Form C) |
-| LM2596HV buck | TO-220-5, bare chip — not a module |
-| ACS724 | bare SOIC-8 chip on a generic SOIC-8→DIP-8 adapter, socketed like U2 |
+| ACS712 | bare SOIC-8 chip on a generic SOIC-8→DIP-8 adapter, socketed like U1 |
 | ESP32-S3-DevKitC | devkit module, socketed with 0.1" pin headers |
 
-The ACS724 (`ACS724xLCTR-05AB`, §4.4) is SOIC-8, not through-hole itself —
-what keeps the board through-hole is whatever it's mounted on. Earlier
-revisions of this design used a Pololu carrier for that (0.1" holes,
-ready-made); this one uses a generic SOIC-8-to-DIP-8 adapter instead
-(0.3"/7.62mm row spacing, already in inventory). That swap drops two
-things the Pololu carrier provided for free: a 0.1uF VCC bypass cap and a
-1nF FILTER-to-GND cap, both confirmed against Allegro's own ACS712/ACS724
-application circuit (not just the Pololu board). Both are now discrete
-parts on the main schematic instead (C4, C5) - see NETLIST.md.
+Every DIP part on this board is socketed, not just U1/U4 as originally
+planned - noticed missing from the shopping list only after seeing a
+render (see conversation), added for all of U2/U4/U3 once caught. Worth
+it specifically because this board is hand-milled, not a plated-through-
+hole fab board - pads are more fragile under a desoldering mistake here
+than on a normal PCB, and sockets cost pennies.
+
+**U5 (buck regulator) is the one deliberate exception.** The true
+through-hole HV buck (`LM2596HVT`/`LM2576HVT`, TO-220-5) turned out to not
+practically exist at hobbyist quantities anywhere checked — Reichelt, TME,
+Mouser, Farnell direct, and Farnell-via-sinuss.nl all came up empty or
+unconfirmed for the T-suffix part specifically (see conversation). The
+real, in-stock option is `LM2576HVS-5.0/NOPB`, S-suffix, **TO-263-5 SMD**.
+This doesn't violate the "no reflow" reasoning, though: TO-263-5 is 5
+large gull-wing leads at roughly TO-220 pitch plus a thermal tab, one of
+the more hand-solder-friendly SMD packages that exists — no hot air or
+reflow needed, just a bit more dwell time on the tab. Checked directly
+against TI's own datasheet: TO-220-5 and TO-263-5 share an identical pin
+table, so this was a footprint-only change, no rewiring.
+
+ACS712 (`ACS712ELCTR-05B`, §4.4) is SOIC-8, not through-hole itself — what
+keeps the board through-hole is whatever it's mounted on, same reasoning
+as U1. This design used the ACS724xLCTR-05AB before switching to ACS712
+(same Hall-effect family, verified pin-identical against both datasheets
+directly, pin-for-pin — not assumed from the similar part number or a
+misleadingly-named KiCad library symbol, see conversation) purely because
+the ACS724 bare chip proved nearly unsourceable, while ACS712ELCTR-05B is
+in real stock at three-plus suppliers already in rotation for this
+project. Either way, mounting the bare chip on a generic SOIC-8-to-DIP-8
+adapter (0.3"/7.62mm row spacing, already in inventory) instead of a
+ready-made carrier (Pololu, in this design's earlier revisions) drops two
+things that carrier provided for free: a 0.1uF VCC bypass cap and a 1nF
+FILTER-to-GND cap, both confirmed against Allegro's own ACS712/ACS724
+application circuit (identical circuit on both parts' datasheets, not
+just the Pololu board). Both are now discrete parts on the main schematic
+instead (C2, C3) - see NETLIST.md.
 
 ### 6.6 Sourcing (Netherlands)
 
 Ruled out, with reasons, so they are not re-evaluated:
 
 - **Digikey** — ~€25 shipping on small orders.
-- **Farnell** — €50 order minimum, even after a reduction.
+- **Farnell direct** — private-customer orders need a write-in request
+  (email/fax/post) and prepayment, not normal checkout, on top of the €50
+  minimum. **sinuss.nl** is a live, working Farnell/element14 private
+  reseller for NL/BE (confirmed directly, unlike muxtronics.nl's own
+  Farnell-intermediary service, which is dead) — usable if a Farnell-only
+  part is unavoidable, but at a real price premium (30–50%+ over Farnell's
+  own business pricing, confirmed directly) - not worth it for anything
+  also stocked at Reichelt/TME.
 
-Working pattern is **two orders**:
+Working pattern, per actual checked availability (see conversation for
+the full supplier-by-supplier matrix):
 
-- **Jellybean components** — Reichelt (DE) or TME (PL). Both ship to NL for
-  single-digit shipping with no minimum. TME has the deeper catalogue. The
-  bare ACS724 and a generic SOIC-8-to-DIP-8 adapter both belong here now
-  that the Pololu carrier (§6.5) is out of the design - neither needs a
-  modules supplier specifically.
-- **Modules** — TinyTronics (Ede), Kiwi Electronics, Opencircuit (Zaandam) or
-  Antratek.
-
-**Mouser is being evaluated** as a possible single-order option — its
-European free-shipping threshold may be low enough to cover the whole BOM.
-Left open; not decided.
+- **Reichelt** — jellybeans and basic semis: resistors, caps, diodes
+  (1N4148, SB560, TVS), 2N7000, IRLZ44N, `74HC123N` (also at Mouser and
+  Farnell direct - TME is the actual outlier here, not Reichelt), screw
+  terminals.
+- **TME** — `SN74HC08N`; the `LM2576HVS-5.0/NOPB` SMD buck (§6.5 - the
+  through-hole HV buck isn't practically available anywhere at hobbyist
+  quantities); the SRD-05VDC-SL-C's real named equivalent, Omron
+  `G5LE-1-5VDC` (5V coil, SPDT/Form-C, 10A/250VAC-30VDC — exact spec
+  match, the bare Songle part itself is a module-market item most proper
+  distributors don't stock discretely); and `ACS712ELCTR-05B` — confirmed
+  in stock by hand after automated checks kept giving contradictory
+  stock figures for it. Between this and the buck/relay, TME covers
+  enough that **Mouser isn't needed at all** for the current design.
+- **Modules** (ESP32 devkit, etc.) — TinyTronics (Ede), Kiwi Electronics,
+  Opencircuit (Zaandam) or Antratek.
+- **PCB blank** (70×100mm copper-clad) — not found at any of the above;
+  expect to need a hobby/eBay/AliExpress source, as originally
+  anticipated.
 
 Substitutes worth recording:
 
 - **IRLZ44N** → any 55–60 V logic-level N-channel in TO-220. Check **Qg and
   VDSS**, not Vgs(th) — see §6.2.
 - **74HC08** → 74HC00 with inverted logic, or 74HC11 triple 3-input AND.
-- **ACS724 carrier** → 10 mΩ shunt + INA240, but INA240 is SOIC-8 and needs a
-  breakout, which fights the through-hole preference (§6.5).
+- **ACS712** → 10 mΩ shunt + INA240 (in the motor leg, not the FET return -
+  same reasoning as §4.4), but INA240 is SOIC-8 and needs a breakout too -
+  same treatment as ACS712 itself (§6.5), not a way to avoid one.
 
 ---
 
@@ -699,10 +756,15 @@ settle. Tune the ramps by feel.
 
 ### 7.3 To fill in
 
-- `read_current_()` is a stub. The ADC call differs between IDF 4.x
-  (`adc1_get_raw`) and 5.x (`adc_oneshot_read`) — the one place to adapt to
-  your toolchain, and why the YAML specifies `esp-idf` rather than Arduino.
-- Relay `inverted:` flags depend on your module (see §6.3).
+- `read_current_()` is implemented (both IDF 4.x `adc1_get_raw` and 5.x
+  `adc_oneshot_read` paths, selected via `ESP_IDF_VERSION` - see
+  `desk_cover.cpp`), but not yet compiled or flash-tested against real
+  hardware. Why the YAML specifies `esp-idf` rather than Arduino at all:
+  ESPHome's `adc` sensor is far too slow for a 200 Hz control loop.
+- Relay `inverted:` flags follow this board's own direct-drive polarity
+  (AND-gate through the 2N7000 coil drivers — see §6.3/NETLIST.md's Drive
+  section), fixed by this design, not something a swappable module would
+  determine.
 
 **Flash with the motor unplugged first.** Watch the log and the current sensor
 before anything can move.
@@ -728,13 +790,35 @@ current collapse — one trip down re-homes the desk.
 > incremental optical and magnetic alternatives, commutator ripple counting,
 > and why an IMU cannot do this — is in **`APPENDIX.md` §2**.
 
+**Board prep done now, ahead of the actual build (see conversation):**
+SDA/SCL break out to a real connector, `TB3`, a 5th screw terminal of the
+same type as TB1, TB2, TB4, TB5, fully routed and DRC-clean. +3V3/GND for the sensor
+don't get their own terminal - land a second wire under each of `TB2`'s
+own two screws instead (it already carries +3V3/GND to the handset; check
+that this terminal's rising-clamp accepts two wires per screw before
+counting on it - a dedicated second terminal, `TB6`, was tried and
+dropped once TB2-sharing made it unnecessary).
+
+**SDA/SCL are on GPIO38/GPIO41, not GPIO12/GPIO13.** The original choice
+(physical pins 18/19 on U1's footprint) turned out to sit in a part of the
+board that's already at real copper capacity - neither Freerouting nor
+careful manual routing could get a single track out from there, regardless
+of where TB3 sat. GPIO38/41 (physical pins 35/38) sit immediately next to
+DIR_A/DIR_B/PWM (pins 36/37/39), GPIOs that already route successfully
+from that same neighborhood - moving to them, and relocating TB3 close by
+(rotated 90° to fit the only free space in that corner), routed cleanly on
+the first attempt after that. Neither is strapping/PSRAM-reserved/native-
+USB, same constraints as the original choice. Firmware should target
+GPIO38 (SDA) and GPIO41 (SCL) for this reason - not the GPIO12/13 an
+earlier version of this section named.
+
 ### 8.2 Data worth logging from day one
 
 Current against time for a full travel in each direction, and coast distance
 after cutoff at various speeds. That's exactly the calibration data phase 2
 needs, and you get it free by using the desk. If commutator ripple turns out
-to be cleanly visible on the ACS724 trace, the cheapest option may be the one
-already built.
+to be cleanly visible on the current-sense trace, the cheapest option may be
+the one already built.
 
 ---
 
@@ -749,11 +833,12 @@ already built.
   **not required** for the build — noted only for completeness.
 - Which of yellow / white is supply positive was never recorded. Also not
   required: circuits 3 and 4 are identified on the connector itself.
-- The housings carry no legible moulded circuit numbers, so the §1.6 diagram
-  is the sole definition of the numbering. Mark the MOT_A cavity with paint so
-  the physical part carries the convention rather than this file.
+- The housings carry no legible moulded circuit numbers, but §1.6's numbering
+  is now confirmed against Molex's own SD-5557-003 drawing, not just this
+  file. Still worth marking the MOT_A cavity with paint so the physical part
+  carries the convention directly, rather than requiring a lookup.
 - ERC has been run (`kicad-cli sch erc`): 127 violations, all triaged as
-  either documented gaps (unused MCU pins, U3/U6 spare units, SDA/SCL
+  either documented gaps (unused MCU pins, U2/U3 spare units, SDA/SCL
   pending Phase 2) or artefacts of this design's power-flag/embedded-symbol
   conventions — no structural defects found.
 
