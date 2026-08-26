@@ -71,9 +71,9 @@ Also needed: crimp tool, wire for the two pigtails + coupler (20-22 AWG).
 
 ## PCB / CNC
 
-- [ ] 150×100mm copper-clad blank, double-sided, 1.5mm — pack of 5 (sourcing map, Amazon.nl `B07RFRVTGB`)
+- [ ] 70×100mm copper-clad blank, double-sided, 1.5mm — pre-cut to the board's own size, no separate cutout pass needed (see mill.tcl); ASIN `B07RFRVTGB` was for a 150×100mm sheet, needs re-sourcing at this size
 - [ ] CNC V-bit, 1/8" shank, 15° — Genmitsu `70V15` (Amazon.nl `B07P99C2FH`)
-- [ ] Flat-nose end mill, 1/8" shank — Genmitsu `FN10A`-family (Amazon.nl `B07P7LGQJ6`)
+- [x] End mill set, 10pcs, 0.8-3mm, 1/8" shank — Genmitsu Nano Blue Coat (Amazon.nl `B07P7LGQJ6`) — ordered; originally for the (now-removed) cutout pass, repurposed as the single bit for drilling all hole diameters via circular toolpaths (see mill.tcl) - the 6 vias that were smaller than this set's 0.8mm minimum were widened to 0.8mm in the design instead of sourcing a separate small bit
 - [ ] DIP IC socket assortment, 66pcs, 6-28 pin — Amazon.nl `B0C442NFWC` (covers the DIP-8/14/16 sockets above)
 - [ ] M3 hardware for corner mounting holes (H1-H4, 3.2mm NPTH) — hold off until enclosure is finalized
 

@@ -14405,7 +14405,7 @@
 	(via
 		(at 55.0296 20.1113)
 		(size 1.2)
-		(drill 0.6)
+		(drill 0.8)
 		(layers "F.Cu" "B.Cu")
 		(net "+5V")
 		(uuid "27175dcc-17ea-44c3-93eb-3f36ce02944d")
@@ -15333,7 +15333,7 @@
 	(via
 		(at 48.3988 17.6112)
 		(size 1.2)
-		(drill 0.6)
+		(drill 0.8)
 		(layers "F.Cu" "B.Cu")
 		(net "Net-(TB2-Pin_1)")
 		(uuid "f124973e-863a-4c15-9923-940f697c98c5")
@@ -15773,7 +15773,7 @@
 	(via
 		(at 55.4544 69.7476)
 		(size 1.2)
-		(drill 0.6)
+		(drill 0.8)
 		(layers "F.Cu" "B.Cu")
 		(net "PWM")
 		(uuid "bc373726-22e8-4a0a-a8f7-75955760ccf8")
@@ -15837,7 +15837,7 @@
 	(via
 		(at 35.6352 110.6329)
 		(size 1.2)
-		(drill 0.6)
+		(drill 0.8)
 		(layers "F.Cu" "B.Cu")
 		(net "/DRV_UP")
 		(uuid "4838e6b2-f7ee-4d67-93af-47a4a40aa023")
@@ -15845,7 +15845,7 @@
 	(via
 		(at 38.65 106.4845)
 		(size 1.2)
-		(drill 0.6)
+		(drill 0.8)
 		(layers "F.Cu" "B.Cu")
 		(net "/DRV_UP")
 		(uuid "6fb13d62-12d9-4a2a-9972-63db68ed46c3")
@@ -15853,7 +15853,7 @@
 	(via
 		(at 26.4 109.3517)
 		(size 1.2)
-		(drill 0.6)
+		(drill 0.8)
 		(layers "F.Cu" "B.Cu")
 		(net "/DRV_UP")
 		(uuid "fee09970-996b-4224-b6d3-db6e9ed1fc97")

@@ -41,10 +41,12 @@ gerbers: $(PCB)
 	kicad-cli pcb export gerbers --layers F.Cu,B.Cu,Edge.Cuts -o $(GERBER_DIR)/ $(PCB)
 	kicad-cli pcb export drill -o $(GERBER_DIR)/ $(PCB)
 
-# Runs FlatCAM headlessly against mill.tcl (isolation/drill/cutout -> raw
-# G-code), then rewrites each output with the header the Snapmaker touchscreen
-# needs (see snapmaker_header.py - raw FlatCAM output crashes it). mill.tcl is
-# a template; mill.generated.tcl (gitignored) has real paths substituted in.
+# Runs FlatCAM headlessly against mill.tcl (isolation/drill -> raw G-code -
+# no separate cutout pass, the blank is pre-cut to the board's own 70x100mm
+# size, see mill.tcl), then rewrites each output with the header the
+# Snapmaker touchscreen needs (see snapmaker_header.py - raw FlatCAM output
+# crashes it). mill.tcl is a template; mill.generated.tcl (gitignored) has
+# real paths substituted in.
 mill: gerbers
 	mkdir -p $(GCODE_DIR)
 	sed -e 's|@@GERBER_DIR@@|$(abspath $(GERBER_DIR))|g' \
@@ -58,7 +60,6 @@ mill: gerbers
 	python3 snapmaker_header.py $(GCODE_DIR)/top_isolation.nc $(GCODE_DIR)/top_isolation.snapmaker.nc
 	python3 snapmaker_header.py $(GCODE_DIR)/bottom_isolation.nc $(GCODE_DIR)/bottom_isolation.snapmaker.nc
 	python3 snapmaker_header.py $(GCODE_DIR)/drill.nc $(GCODE_DIR)/drill.snapmaker.nc
-	python3 snapmaker_header.py $(GCODE_DIR)/cutout.nc $(GCODE_DIR)/cutout.snapmaker.nc
 
 clean:
 	rm -f $(PDF) $(SVG)
