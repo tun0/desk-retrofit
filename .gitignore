@@ -6,3 +6,13 @@ fp-info-cache
 ~*.lck
 __pycache__/
 .history/
+
+# Milling tooling - external checkout + venv, not project content.
+# tools/flatcam.sh (the launcher) is deliberately not ignored.
+tools/flatcam/
+tools/flatcam-env/
+
+# Gerbers/drill/G-code are regeneratable milling artifacts (`make gerbers`,
+# `make mill` in schematics/gen/), not tracked deliverables like desk.pdf.
+schematics/gerbers/
+schematics/gen/mill.generated.tcl
