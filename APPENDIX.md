@@ -460,3 +460,308 @@ settled, keeping a second maintained generator around had no further purpose.
 With only one sheet left, `sch_simple.py`/`desk_simple.*` were renamed to
 `sch.py`/`desk.*` — "simple" was only ever a name to distinguish it from the
 other two.
+
+### 7.1 Isolation-milling tooling: FlatCAM's bugs, and the move to pcb2gcode
+
+`schematics/gen/` also holds the isolation-milling pipeline: `mill.tcl`
+(FlatCAM headless driver), `verify_isolation.py` (per-pixel confirmation
+that the toolpath actually cuts the copper it needs to), `snapmaker_header.py`
+(header patch the Snapmaker touchscreen requires), and `fix_travel_jumps.py`
+(FlatCAM-specific G-code post-processor, see below). None of this was listed
+in `CLAUDE.md`'s layout table until this pass — an oversight, not a decision.
+
+**Why `verify_isolation.py` exists at all.** A zone-fill Gerber render's own
+"white" areas are design *intent* (clearance/keepout), not a property of the
+raw copper-clad blank - the blank starts copper everywhere, and only the
+G-code toolpath actually sweeping a pixel removes material there. Treating
+design-white as already-bare (an earlier version of this checker did exactly
+that) silently invents material removal that never happened. The tool
+renders the KiCad copper SVG and the real (parsed, not idealized) G-code
+toolpath into the same raster and checks, per pixel, whether the swept area
+actually falls on raw-blank copper - see its own docstring for the full
+detail, including why off-board has to be determined from the known
+board-rectangle geometry rather than SVG alpha (kicad-cli's Edge.Cuts export
+does not reliably fill the board interior opaque).
+
+**Three distinct, confirmed FlatCAM `isolate()` defects**, found by
+progressively distrusting each "looks fine" result against this checker:
+
+1. **`iso_type=2` (the default, exterior+interior combined) silently fails
+   across most of a large ground-pour-with-many-cutouts polygon** - measured
+   ~34-38% real toolpath coverage of the design's own clearance-channel
+   centerlines, board-wide, not just at one complex corner. `iso_type=1`
+   (interior alone) produces *zero* G-code paths for this Gerber-derived
+   region topology (confirmed in FlatCAM's own debug log). `iso_type=0`
+   (exterior only) is not simply "what's left after subtracting `iso_type=1`
+   from `iso_type=2`" - it's a different, more robust code path that alone
+   recovered the vast majority of real coverage. `mill.tcl` now isolates
+   both copper layers with `-iso_type 0` explicitly, with this reasoning
+   inline as a comment.
+2. **`fix_travel_jumps.py`'s original length-threshold heuristic
+   (">1mm G1 move while cutting = bogus gouge") was itself actively harmful**
+   once `iso_type=0` was adopted: a genuine long straight cut (e.g. a run
+   parallel to the board's own edge, needing few tessellation points) is
+   indistinguishable from a genuine bogus gouge by length alone (no clean
+   percentile gap - p95=0.56mm, p99=7.86mm, max=86mm, all real board-scale
+   distances). Comparing raw pre-fix output (76% coverage) against the
+   "fixed" output (33% coverage) on the *same file* is what caught this -
+   the post-processor meant to fix one bug was quietly destroying more
+   coverage than it recovered. Rewritten to be geometry-aware: a candidate
+   move is only "dangerous" if it does NOT hug a real copper/clearance edge
+   the whole way (checked against the same KiCad SVG render
+   `verify_isolation.py` trusts, via a distance-to-copper-*edge* field - not
+   distance-to-copper, since being inside solid copper trivially scores as
+   "close to copper" and would let a gouge through a pad's interior pass).
+   A second bug category needed a separate fix: a path can close a loop
+   short by ~1mm at the exact point it retracts, detectable by comparing the
+   retract position against the segment's own recorded start point (see the
+   script's own docstring for both fixes in full).
+3. **A narrower, unpatchable defect**: FlatCAM's G-code path ordering can
+   mid-loop detour through a nearby unrelated feature and back, permanently
+   skipping a short (~1mm or less) direct connection on the original loop.
+   Confirmed directly on one specific small pad (raw G-code inspection
+   showed the loop's start/end points already coincide - it isn't an
+   unclosed-loop bug - but direct `swept`-mask sampling at the true gap's
+   own midpoint came back `False`). Not detectable by either a length
+   threshold or the edge-hugging check above: every individual move in the
+   detour is itself legitimate, they just don't sum to a complete loop for
+   the pad in question. This is the specific finding that motivated trying
+   a different tool rather than continuing to patch FlatCAM's output.
+
+**pcb2gcode was rejected in an earlier session on hearsay** - other people's
+reported experience, never tested against this board - and documented
+nowhere except a terse comment in an earlier Makefile revision. Given three
+confirmed, real FlatCAM bugs on this specific board, it was tried directly
+this session. Building it exposed real, separate tooling problems:
+
+- **The AUR `pcb2gcode-git` package is stale.** Its `prepare()` step still
+  runs `autoreconf -i && ./configure`, but upstream deleted `configure.ac`/
+  `Makefile.am` when it migrated the whole build to CMake; the PKGBUILD
+  never caught up, so it fails outright (`autoreconf: error: 'configure.ac'
+  is required`). Bypass the PKGBUILD entirely and build the CMake tree
+  directly (this is what `tools/pcb2gcode-src/` is, see below) - not
+  installed as a system package at all.
+- Two more issues were hit and root-caused **against the old, abandoned
+  autotools build** before the CMake migration was discovered; neither
+  affects the CMake build, but both are worth knowing so they aren't
+  re-discovered blind if anyone ever has to debug the old path: (a) GCC 16's
+  `#include_next` chains break if a directory it already searches by default
+  gets re-added via `-isystem` in a different position - `configure.ac`
+  blanket-substitutes every `-I` in `$(BOOST_CPPFLAGS)` to `-isystem`, and on
+  this Arch-based system Boost lives directly under `/usr/include`, so this
+  reliably broke `<cstdlib>`; `geos-config --cflags` independently emits the
+  same bare `-I/usr/include`. (b) `path_finding.cpp` used an old
+  `boost::optional` construction pattern that a newer installed Boost's
+  explicit-constructor rules reject - already fixed upstream on git HEAD,
+  commit `1120553b`.
+
+**Build recipe** (validated this session; the checked-out tree lives at
+`tools/pcb2gcode-src/`, gitignored the same way `tools/flatcam/` is - not a
+system package):
+
+```sh
+sudo pacman -S gerbv-git    # or: yay -S gerbv-git --noconfirm
+                            # (conflicts with plain gerbv - pcb2gcode needs
+                            # the newer libgerbv API only gerbv-git ships)
+git clone https://github.com/pcb2gcode/pcb2gcode tools/pcb2gcode-src
+cd tools/pcb2gcode-src
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DPCB2GCODE_COMPILE_WARNING_AS_ERROR=OFF
+cmake --build build -j$(nproc)
+```
+
+`-DPCB2GCODE_COMPILE_WARNING_AS_ERROR=OFF` works around a
+`-Wmaybe-uninitialized` false positive deep in Boost.Geometry's own template
+code (envelope/expand box computation), promoted to a hard error by
+`-Werror` under this system's gcc - nothing to do with pcb2gcode's own code.
+No source patching needed on this path. Binary ends up at
+`tools/pcb2gcode-src/build/pcb2gcode`.
+
+**Coordinate frame - the one genuinely surprising, safety-critical finding.**
+`--zero-start` anchors the job origin to `board.get_bounding_box().min_corner()`
+- the union of all loaded layers. Without `--outline`, that's just the
+copper's own bounding box (~67×98mm here), not the true 70×100mm board - the
+wrong anchor for a milling jig that registers against the *physical blank's*
+edges. Passing `--outline desk-Edge_Cuts.gm1` (with a placeholder
+`--cutter-diameter`/`--zcut`/`--cut-feed`/`--cut-speed`/`--cut-infeed` - the
+resulting `outline.ngc` is never used, the blank is pre-cut same as
+`mill.tcl`) fixes the anchor to the true board - except pcb2gcode's own
+outline-bounding-box computation **inflates that box outward by
+`(cutter-diameter + 0.05mm)` in +X/+Y**, undocumented anywhere and only
+found by tracing a known drilled hole's exact coordinates end to end through
+the pipeline (a T8/3.2mm mounting-hole drill at Gerber `X19Y-19` should land
+at job `(4, 96)` on a zero-started, true-board-anchored frame; it actually
+landed at `(5.05, 97.05)` with a 1.0mm cutter-diameter placeholder - exactly
+`1.0 + 0.05` off in both axes). Fixed with `--x-offset -1.05 --y-offset -1.05`
+(paired with the 1.0mm placeholder `--cutter-diameter` `make mill` uses) -
+after that correction the same hole lands at exactly `(4, 96)`, verified to
+5 decimal places, and every copper feature's extent falls cleanly inside
+`[0,70]×[0,100]` (before the fix, some extended past board edges into
+negative jig territory). `--mirror-axis 35` (half the *true* 70mm board
+width) is only correct once the bounding box above is fixed - get any of
+this wrong and every coordinate silently shifts by about a millimetre
+against the physical jig.
+
+**Re-verification against pcb2gcode's real output** (`verify_isolation.py`,
+same tool that found the FlatCAM bugs above): both layers report 100% of
+swept toolpath pixels landing on real raw-blank copper, and the connectivity
+check finds *more* distinct isolated copper islands than FlatCAM's own
+best-tuned output (276/300 vs FlatCAM's 228) - more separation, not less,
+i.e. no evidence of new shorts. The specific pad where FlatCAM's third bug
+(the path-ordering detour) was confirmed shows a fully closed ring in
+pcb2gcode's output. A cruder, ad hoc board-wide "skeletonize the design's
+clearance channels and check toolpath overlap" metric (built this session,
+not part of `verify_isolation.py`) was also tried for a single aggregate
+number, but proved unreliable on this board: direct spot-checks of several
+of its "uncovered" flags turned out to be false positives of the metric
+itself (its own antialiasing-exclusion logic around drilled holes and small
+pads created phantom boundaries where the design has none - e.g. a via
+correctly soldered straight to its surrounding ground pour, with no
+isolation channel needed at all, still got flagged as "missing a channel").
+Rather than keep patching a proxy metric that had already fooled the
+investigation once (see the FlatCAM section above - the same trap), the
+per-pixel diagnostic and connectivity check above are the numbers actually
+trusted here.
+
+**pcb2gcode retracts to Z-safe before every disjoint isolation loop as a
+structural property of its own G-code** (confirmed by counting retract
+commands against loop count) - no evidence of FlatCAM's silent same-Z gouge
+bug that `fix_travel_jumps.py` exists to fix, so that post-processor is not
+run on pcb2gcode's output. This was checked, not assumed.
+
+`make mill` now runs the pcb2gcode pipeline by default; the FlatCAM pipeline
+stays available as `make mill-flatcam` (still using `mill.tcl` and
+`fix_travel_jumps.py` exactly as before) in case pcb2gcode's from-source
+build ever proves too fragile on a future system update. See README §5
+for the one-line summary of the decision.
+
+**`--voronoi` was tried and rejected.** The fixed-width isolation channel
+above still leaves small copper remnants where two closely-spaced same-net
+pads (e.g. adjacent pins in a 2.54mm header row) each keep an independently
+rounded boundary that doesn't quite meet its neighbor - harmless (confirmed
+via the connectivity check: each remnant is the same colour as, i.e. part
+of, one specific neighbouring pad, never a bridge between two different
+nets) but untidy. `--voronoi` mode replaces the fixed-width-channel
+algorithm with a fair boundary computed between neighbouring copper
+regions, which does clean these up - confirmed visually at the exact header
+row above, and it still honours `--isolation-width`/`--milling-overlap`, so
+the channel width itself doesn't get thinner. But it's a different
+algorithm, not just a flag on the same one, and two separate real problems
+were found in the same test run:
+
+- The coverage metric (toolpath-only-touches-real-copper) dropped from 100%
+  to 96.9%, traced to Voronoi regions for a couple of near-board-edge nets
+  extending past the true board rectangle entirely (nothing bounds the
+  "fair" boundary on the open side) - two visible spikes past the drawn
+  board edge in the full-board render. That means commanding the mill to
+  travel briefly outside the 70x100mm blank in those spots.
+- **Worse: two of the four corner mounting holes weren't isolated at all.**
+  Spot-checking all four corners directly (the same per-pixel diagnostic
+  used throughout this investigation) showed the top two holes isolated
+  cleanly, but at the bottom two the toolpath just traces the flat board
+  edge and skips the hole's own clearance arc entirely - leaving that
+  hole's surrounding copper permanently connected to the ground pour on the
+  real board. Not a cosmetic issue like the header-row remnants above: a
+  genuine unmilled short, and specifically the kind of defect this whole
+  verification pipeline exists to catch before it reaches the mill.
+
+Rejected on this basis rather than chasing a fix; the per-net fixed-width
+channel above, despite its small cosmetic remnants, isolates all four
+mounting holes correctly and never commands anything outside the board.
+
+### 7.2 `custom_isolate.py`: generating the toolpath directly from KiCad's own boundary
+
+By this point the isolation-milling investigation had found five confirmed
+bugs across two independent tools' internal polygon-offset algorithms
+(FlatCAM's default isolate(): 3; pcb2gcode's `--voronoi` mode: 2, one of
+them an actual short) and zero in KiCad's own zone fill. Both tools take
+the same fundamentally redundant path: KiCad already computes the exact
+copper/clearance boundary during zone fill (that's what
+`verify_isolation.py`'s `render_at()` renders and has been the trusted
+ground truth this whole investigation), and both tools re-derive a
+toolpath from a re-imported, re-flattened Gerber using their own offset
+algorithm - a second, independent computation of something already solved,
+and exactly where every bug above came from.
+
+`schematics/gen/custom_isolate.py` skips that redundant step: it rasterizes
+the same KiCad SVG render (not Gerber, no re-import), extracts copper
+regions directly via `cv2.findContours` (with proper hole hierarchy - RETR_CCOMP,
+so a filled region's own cutouts are tracked as real holes, not lost),
+builds Shapely polygons, and offsets them with Shapely's own `.buffer()` -
+backed by GEOS, a library specifically known for getting robust polygon
+offsetting right in exactly the cases FlatCAM and pcb2gcode's own
+implementations were failing. The result is written straight to G-code in
+board-mm coordinates, with true board bottom-left as `(0,0)` by
+construction - no dependency on pcb2gcode's bounding-box-inflation quirk
+(§7.1 above) at all.
+
+Three real defects were found and fixed during development, each traced to
+a genuine root cause rather than papered over:
+
+1. **A pad's own future drill hole isn't a net boundary.** The first
+   version isolated every ordinary THT pad twice - once correctly around
+   its outer edge, and again around its own hole, which KiCad's SVG export
+   draws as bare (matching the real annular-ring pad shape) even though
+   it's not a clearance requirement, just where the drill will go. Milling
+   a channel there is pure waste (drilling removes it anyway) and risks a
+   channel not landing exactly where the drill goes. Fixed by
+   cross-referencing every hole in the copper mask against the real
+   Excellon drill file (`is_drilled_away()`): a hole no wider than its
+   matching real drill position is skipped entirely; only holes wider than
+   their drill (e.g. a mounting hole's clearance disc, deliberately bigger
+   than the hole itself) get a toolpath.
+2. **Board-edge overreach.** Same root cause as pcb2gcode's `--voronoi`
+   issue above but self-inflicted: without clipping, any copper feature
+   running close to the board edge (the main ground pour routinely does)
+   pushes the offset boundary slightly past it - confirmed directly, one
+   single 221,696px cluster running nearly the full length of the board's
+   right edge, not scattered noise. Fixed by intersecting every offset pass
+   with the true board rectangle before emitting it.
+3. **Gaps wider than the channel's own reach leave copper stranded in the
+   middle.** Wherever a design's clearance gap is wider than twice the
+   channel width, whatever's in the middle of it never gets touched by a
+   fixed-width channel alone - confirmed harmless (the stranded copper is
+   always fully disconnected from every net, visible as its own distinct
+   colour in the connectivity check, never a bridge) but real leftover
+   copper nonetheless, and confirmed to be an even bigger characteristic of
+   pcb2gcode's own default output on this same board (769mm² total unswept
+   area there vs 603mm² here, single biggest connected region 620mm² vs
+   602mm²) - i.e. not a regression, a pre-existing and worse-elsewhere
+   property of "channel-only" isolation strategies generally. Small,
+   bounded instances are now auto-cleared with a dedicated second pass
+   (`find_orphan_islands()` + `pocket_paths()`, concentric inward offsets
+   until the island is fully consumed); anything bigger than
+   `MAX_ORPHAN_AREA_MM2` (4mm²) is left alone and warned about instead of
+   blindly milled, since something that large would indicate a real bug
+   rather than this expected characteristic - confirmed this cutoff
+   correctly separates the ~140mm² of genuinely small, legitimate leftover
+   crumbs from the ~600mm² network-wide characteristic on this board.
+
+After all three fixes, extensive spot-checking (all four mounting holes on
+both layers, the full ESP32 DevKitC header row, several vias and pads near
+C4/D4/U5 including a 4-spoke thermal-relief pad) found no further defects -
+each checked against both the raw per-pixel diagnostic and the
+net-connectivity check (which distinguishes a real short from a merely
+untidy-looking but harmless same-net connection - confirmed necessary
+during this same investigation: a capacitor's GND pin with a
+thermal-relief-style partial ring looks identical to a genuinely broken
+isolation ring at a glance, and only the connectivity check tells them
+apart).
+
+**Back-layer mirroring** uses the same convention as mill.tcl/pcb2gcode
+("flip like a page", about the board's own vertical centerline): the
+back-layer copper SVG is exported already mirrored
+(`kicad-cli ... --mirror`), so the copper geometry itself needs no special
+handling; the only thing `--mirror` (this script's own flag) does is also
+mirror the Excellon drill positions before matching them against that
+already-mirrored copper mask, since a physical hole is the same from
+either face and the drill file itself is never mirrored.
+
+Drilling is NOT reimplemented here - `make mill` still runs pcb2gcode
+purely for its milldrill output (discarding its isolation output, which
+this generator replaces), since milldrilling hasn't shown any of the
+isolation-specific bugs this investigation found and pcb2gcode's own
+coordinate frame (with the x/y-offset correction from §7.1) is already
+independently verified.
+
+`make mill` now runs this generator by default; `make mill-pcb2gcode` and
+`make mill-flatcam` both still work as explicit fallbacks.

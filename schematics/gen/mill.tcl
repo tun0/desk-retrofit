@@ -16,9 +16,28 @@
 # placeholders - dial these in empirically on offcut test coupons before
 # cutting the real board. The isolation gap actually milled depends on cut
 # depth (a V-bit gets wider as it goes deeper), not just the tip diameter.
+# iso_passes/iso_overlap widened from a single 0.1mm pass (exactly the bit's
+# nominal tip diameter, zero margin against backlash/runout/Z drift) to
+# three passes at 40% overlap, giving a ~0.22mm channel - confirmed against
+# this design's own DRC floor (desk.kicad_pro min_clearance: 0.4mm between
+# different nets everywhere), so 0.22mm leaves ~45% headroom without risking
+# FlatCAM being unable to fit a toolpath at the tightest-clearance spots
+# (see conversation). -overlap is a PERCENTAGE (0-99.9999), NOT a 0-1
+# fraction - confirmed directly in appObjects/GerberObject.py's isolate()
+# (`overlap /= 100.0` runs unconditionally on whatever is passed here) -
+# the previous value of 0.6 here was actually ~0% overlap by accident,
+# harmless only because iso_passes was 1 at the time.
+#
+# 0% overlap (two passes, mathematically just touching) was tried first and
+# rejected: verify_isolation.py's connectivity check went from 18-26 real
+# isolated islands to 149/108 with 4028-4359 sub-threshold fragments (up
+# from ~4) - passes that only touch in idealized geometry leave hairline,
+# easily-missed seams between them, which is exactly the fragility this
+# change was meant to remove. Real overlap between passes (not just a wider
+# nominal total) is what actually buys robustness.
 set iso_dia         0.1     ;# TODO: calibrate against test coupon
-set iso_passes      1
-set iso_overlap     0.6
+set iso_passes      3
+set iso_overlap     40       ;# percent
 set iso_cut_z       -0.1    ;# TODO: calibrate - mm, negative = into copper
 set iso_feedrate    80      ;# TODO: calibrate - mm/min, XY
 set iso_travel_z    2.0
@@ -105,14 +124,34 @@ set dy [expr {0.0 - $outline_ymin}]
 offset outline top_copper bottom_copper drills -x $dx -y $dy
 
 # --- Front copper isolation --------------------------------------------------
-isolate top_copper -dia $iso_dia -passes $iso_passes -overlap $iso_overlap -combine 1 -outname top_iso
+# -iso_type 0 (exterior only), NOT the default 2 (both exterior+interior):
+# measured directly that iso_type=2 leaves ~2/3 of this board's isolation
+# channels with NO real toolpath at all, board-wide, not just at complex
+# corners - FlatCAM's combined offset computation silently fails across most
+# of a large ground-pour polygon with many densely-packed cutouts (every
+# pad/via/trace clearance is a cutout in it). iso_type=0 alone measured at
+# ~76% real coverage of the same channels (verify_isolation.py's skeleton
+# check) - more than double, and visually confirmed complete (arcs, pad
+# rings, and long trace boundaries all closed) at a previously-broken
+# corner. iso_type=1 (interior alone) was also tried and produces ZERO
+# G-code paths for this Gerber-derived region (confirmed in FlatCAM's own
+# debug log - no "N paths"/"Starting G-Code" messages at all) - it doesn't
+# apply to how KiCad's zone-fill Gerbers represent cutouts, so iso_type=2
+# isn't simply "ext union int"; whatever combined algorithm it actually
+# runs is what's failing here. Use exterior-only outright, not a
+# reconstructed union (see conversation for the full trace).
+isolate top_copper -dia $iso_dia -passes $iso_passes -overlap $iso_overlap -combine 1 -iso_type 0 -outname top_iso
 cncjob top_iso -z_cut $iso_cut_z -z_move $iso_travel_z -feedrate $iso_feedrate -dia $iso_dia -spindlespeed 0 -outname top_iso_cnc
 write_gcode top_iso_cnc $out_dir/top_isolation.nc
 
 # --- Back copper isolation ---------------------------------------------------
-isolate bottom_copper -dia $iso_dia -passes $iso_passes -overlap $iso_overlap -combine 1 -outname bottom_iso
+isolate bottom_copper -dia $iso_dia -passes $iso_passes -overlap $iso_overlap -combine 1 -iso_type 0 -outname bottom_iso
 cncjob bottom_iso -z_cut $iso_cut_z -z_move $iso_travel_z -feedrate $iso_feedrate -dia $iso_dia -spindlespeed 0 -outname bottom_iso_cnc
 write_gcode bottom_iso_cnc $out_dir/bottom_isolation.nc
+
+isolate bottom_copper -dia $iso_dia -passes $iso_passes -overlap $iso_overlap -combine 1 -iso_type 1 -outname bottom_iso_int
+cncjob bottom_iso_int -z_cut $iso_cut_z -z_move $iso_travel_z -feedrate $iso_feedrate -dia $iso_dia -spindlespeed 0 -outname bottom_iso_int_cnc
+write_gcode bottom_iso_int_cnc $out_dir/bottom_isolation_int.nc
 
 # --- Drilling -----------------------------------------------------------------
 # Not mirrored: drilled holes go straight through the board, so the same

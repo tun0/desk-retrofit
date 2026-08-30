@@ -107,7 +107,19 @@ schematics/    KiCad 7 format, symbols embedded, no external libs
                  reroute_pcb.py    <- strip-and-reroute the PCB from scratch (see its header)
                  netlist_text.py   <- renders a .kicad_sch as plain text
                  find_*.py         <- schematic-quality checkers, run via `make check`
-                 Makefile          <- `make` regenerates .kicad_sch/.pdf/.svg
+                 custom_isolate.py <- isolation-milling toolpath generator, `make mill`
+                                      (default - generates directly from KiCad's own
+                                      copper boundary via Shapely, see its own docstring
+                                      and APPENDIX §7.2)
+                 mill.tcl          <- FlatCAM isolation-milling driver, `make mill-flatcam`
+                                      (fallback; `make mill-pcb2gcode` is another - see
+                                      APPENDIX §7.1/§7.2)
+                 fix_travel_jumps.py <- FlatCAM-only G-code post-processor, see its header
+                 verify_isolation.py <- per-pixel toolpath/copper verification, `make verify`
+                 snapmaker_header.py <- patches raw G-code with the header the Snapmaker
+                                        touchscreen requires to load a file at all
+                 Makefile          <- `make` regenerates .kicad_sch/.pdf/.svg;
+                                      `make mill`/`mill-flatcam`/`verify` drive milling
 my_components/desk/   ESPHome external component (cover platform)
 desk.yaml             example ESPHome config
 ```

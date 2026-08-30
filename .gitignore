@@ -11,6 +11,7 @@ __pycache__/
 # tools/flatcam.sh (the launcher) is deliberately not ignored.
 tools/flatcam/
 tools/flatcam-env/
+tools/pcb2gcode-src/
 
 # Gerbers/drill/G-code are regeneratable milling artifacts (`make gerbers`,
 # `make mill` in schematics/gen/), not tracked deliverables like desk.pdf.

@@ -470,6 +470,37 @@ Recorded because several later conclusions only make sense in light of these.
     copper-clad blank instead of ordered or hand-wired. See
     `schematics/desk.kicad_pcb` and its commit history for the design
     itself.
+11. **Rejected pcb2gcode on hearsay, never actually tested it.** An earlier
+    session ruled it out from other people's reported experiences and
+    settled on FlatCAM instead (`schematics/gen/mill.tcl`). Building
+    increasingly rigorous isolation-milling verification tooling
+    (`verify_isolation.py`) around FlatCAM's output eventually surfaced
+    three distinct, confirmed FlatCAM `isolate()` bugs on this board's
+    ground-pour-heavy layout — including one (a G-code path-ordering
+    detour that silently skips a short loop-closing segment) that isn't
+    patchable in general. Trying pcb2gcode directly (after working around
+    a stale AUR package — see APPENDIX §7) found it isolates this board
+    measurably more completely, with no equivalent defect found. The
+    milling pipeline defaulted to pcb2gcode (`make mill`) for a while; the
+    FlatCAM pipeline stayed in the repo as an explicit fallback
+    (`make mill-flatcam`) since pcb2gcode needed a from-source build. See
+    APPENDIX §7 for the full technical investigation.
+12. **Assumed a third-party isolation-routing tool was necessary at all.**
+    Trying pcb2gcode's own `--voronoi` mode (to clean up some harmless but
+    untidy leftover copper) surfaced two more real bugs - one of them an
+    actual short, not just cosmetic. That's five confirmed bugs across two
+    independent tools' internal polygon-offset algorithms, and zero in
+    KiCad's own zone fill. `schematics/gen/custom_isolate.py` generates the
+    isolation toolpath directly from that same already-correct KiCad
+    boundary (the SVG render `verify_isolation.py` already trusted as
+    ground truth) using Shapely/GEOS - a mature, heavily-used library
+    specifically because robust polygon offsetting is hard to get right,
+    which is exactly where FlatCAM and pcb2gcode's own implementations kept
+    failing. Extensive spot-checking (all four mounting holes, a full
+    header row, several vias and a thermal-relief pad) found no bugs in it.
+    Now the default `make mill`; pcb2gcode and FlatCAM both stay as
+    explicit fallbacks (`make mill-pcb2gcode`, `make mill-flatcam`). See
+    APPENDIX §7.2 for the full investigation.
 
 ---
 
