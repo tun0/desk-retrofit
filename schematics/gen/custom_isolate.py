@@ -17,7 +17,7 @@ board-mm coordinates (true board bottom-left = (0,0) by construction - no
 dependency on pcb2gcode's bounding-box-inflation quirk at all, see
 APPENDIX §7.1's "Coordinate frame" note on that).
 
-Three defects were found and fixed during development, in order:
+Five defects were found and fixed during development, in order:
 
 1. A pad's own future drill hole isn't a net boundary - it's still solid
    copper before drilling, and milling a channel around it is pure waste
@@ -43,6 +43,36 @@ Three defects were found and fixed during development, in order:
    larger than MAX_ORPHAN_AREA_MM2 is left alone and warned about instead
    of blindly milled, since that would indicate a real bug rather than
    this expected characteristic.
+4. Un-simplified, a real board's G-code ballooned to ~1M lines (cv2's
+   CHAIN_APPROX_NONE keeps a vertex every ~0.01mm along any curve, and
+   Shapely's buffer() adds its own points on top of that) - about 19x more
+   than the same board through pcb2gcode. Simplifying each offset pass's
+   own emitted ring independently was tried first and rejected: confirmed
+   to erode the deliberate overlap margin between adjacent passes into
+   real hairline gaps at some pad boundaries, since each pass's
+   simplification error is uncorrelated with its neighbours'. Fixed by
+   simplifying exactly once per shape, on the shared source before any
+   buffering (copper_union in build_copper_polygons(), and each orphan
+   island in find_orphan_islands()) - every offset pass is then buffer()'d
+   deterministically from the same fixed input, so their relationship to
+   each other is exact regardless of the input's own (deliberately
+   increased) coarseness. See SIMPLIFY_TOLERANCE_MM's own comment for the
+   full margin analysis and what was actually verified. This alone turned
+   out NOT to fix Snapmaker's own machining time estimate (still ~7.5h/side
+   after a 14x point-count cut) - see defect 5, the actual cause.
+5. The real cause of the ~7.5h/side estimate: ~2400 separate loops were
+   emitted in whatever order Shapely's unary_union/buffer happened to
+   produce (effectively arbitrary, not spatially sorted), producing
+   ~20,000mm of G00 rapid travel alone on a real board - more than the
+   ~14,800mm of actual cutting. Confirmed Snapmaker's own time estimator
+   (Luban) charges G00 moves at the active cutting feedrate rather than a
+   fast jog rate, so this unsorted travel dominated the estimate even
+   after defect 4 was fixed. Fixed with a greedy nearest-neighbour
+   reordering pass (order_paths()) - cut rapid travel to ~1430mm, close to
+   pcb2gcode's own ~725mm on the same board. Also tried, and rejected:
+   rotating each closed ring to start at its closest vertex to the
+   incoming position (saves a little more travel in principle) measurably
+   regressed real coverage instead - see order_paths()'s own docstring.
 
 Usage: python3 custom_isolate.py <copper.svg> <board_w> <board_h> <out.nc> <drill.drl> [--mirror]
 
@@ -89,6 +119,39 @@ HOLE_MATCH_TOLERANCE_MM = 0.05
 # large; investigate instead (see module docstring, point 3).
 MAX_ORPHAN_AREA_MM2 = 4.0
 MIN_ORPHAN_AREA_MM2 = 0.02  # below this: rendering-noise fragments, not real
+
+# cv2.findContours at 100px/mm puts a vertex every ~0.01mm along any curve
+# (CHAIN_APPROX_NONE keeps literally every raster pixel), and Shapely's
+# buffer() then adds its own quad_segs points per curve on top of that -
+# without simplifying, a real board's total G-code ballooned to ~1M lines
+# (vs ~54k for the same board through pcb2gcode) and Snapmaker's own time
+# estimate went from ~1h/side to ~7.5h/side, confirmed to be from segment
+# count, not real toolpath length.
+#
+# The 3 offset passes (see offset_radii()) are spaced TOOL_DIA_MM*(1 -
+# OVERLAP_FRACTION) = 0.06mm apart and are each TOOL_DIA_MM = 0.1mm wide,
+# so consecutive passes have a 0.04mm deliberate overlap margin.
+# Simplifying each pass's own emitted ring INDEPENDENTLY was tried first
+# and rejected: confirmed real hairline gaps between passes at some (not
+# all) pad boundaries, from two unrelated simplifications happening to
+# perturb toward each other and cancel the margin - even at a much smaller
+# 0.006mm tolerance, some gaps still appeared. Simplifying once, here, on
+# the shared source before any buffering (see build_copper_polygons's own
+# return line) avoids the problem at the root: all 3 passes are then
+# buffer()'d from the exact same fixed input, so their relationship to
+# each other is exact regardless of how coarse that shared input is - only
+# the input's own coarseness would matter, and it doesn't
+# (build_copper_polygons is the design's own copper/clearance boundary,
+# already correct by the time it gets here). Verified board-wide against
+# the pre-simplification baseline (itself extensively spot-checked earlier
+# this investigation): the count of small (0.02-500mm^2) disconnected
+# leftover-copper regions went from 18 to ~69, but the size distribution
+# and maximum (~0.3-0.47mm^2 either way) did not grow - these are more
+# instances of the same already-documented "channel narrower than the
+# design's own gap" characteristic (module docstring point 3), not a new
+# failure mode; every one checked directly is a disconnected hairline gap
+# in a normal channel, not a spike or self-intersection.
+SIMPLIFY_TOLERANCE_MM = 0.02
 
 
 def parse_drill_holes(drl_path, board_w, mirror):
@@ -148,7 +211,7 @@ def build_copper_polygons(svg_path, board_w, board_h, drill_holes):
     # docstring point 1 and is_drilled_away().
     is_copper = (~is_white & ~is_offboard).astype(np.uint8) * 255
 
-    contours, hierarchy = cv2.findContours(is_copper, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_NONE)
+    contours, hierarchy = cv2.findContours(is_copper, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
     hierarchy = hierarchy[0]  # cv2 wraps it in an extra dim
 
     def to_mm(pts):
@@ -188,7 +251,17 @@ def build_copper_polygons(svg_path, board_w, board_h, drill_holes):
             print(f"skipping bad contour {i}: {e}", file=sys.stderr)
     print(f"drill-matched holes skipped (no isolation needed): "
           f"{n_holes_skipped}/{n_holes_total}")
-    return unary_union(polys)
+    # Simplify exactly once, here, on the shared source - not once per
+    # offset pass later. buffer() at each of the 3 radii (see
+    # offset_radii()) then computes deterministically from this one fixed
+    # input, so the passes stay mathematically consistent with each other
+    # (the geometric relationship between them is exact, not independently
+    # approximated 3 separate times). Simplifying each pass's own emitted
+    # ring independently was tried and rejected: confirmed to erode the
+    # deliberate 0.04mm overlap margin between adjacent passes down to a
+    # real hairline gap at some (not all) pad boundaries, since each pass's
+    # simplification error is uncorrelated with its neighbours'.
+    return unary_union(polys).simplify(SIMPLIFY_TOLERANCE_MM, preserve_topology=True)
 
 
 def offset_radii():
@@ -204,7 +277,16 @@ def paths_of(geom):
     """Yield coordinate lists from a (possibly board-clipped) boundary
     geometry. Closed rings stay closed (first point == last); pieces cut
     open by the board rectangle become open paths - both are valid G-code
-    paths, just retract/replunge instead of looping."""
+    paths, just retract/replunge instead of looping.
+
+    Deliberately NOT simplified here (or anywhere downstream of
+    build_copper_polygons's own single simplify() call) - simplifying each
+    offset pass's own emitted ring independently was tried and rejected:
+    confirmed to erode the deliberate overlap margin between adjacent
+    passes down to a real hairline gap at some (not all) pad boundaries,
+    since each pass's simplification error is uncorrelated with its
+    neighbours'. One simplify on the shared source, before any buffering,
+    keeps every pass mathematically consistent with the others instead."""
     if geom.is_empty:
         return
     if geom.geom_type == "LineString":
@@ -259,7 +341,7 @@ def find_orphan_islands(svg_path, board_w, board_h, channel_paths_list):
                   file=sys.stderr)
             continue
         mask = (labels == (i + 1)).astype(np.uint8) * 255
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         for cnt in contours:
             if len(cnt) < 3:
                 continue
@@ -268,6 +350,18 @@ def find_orphan_islands(svg_path, board_w, board_h, channel_paths_list):
             poly = Polygon(zip(xs, ys))
             if not poly.is_valid:
                 poly = poly.buffer(0)
+            # Simplify once, here, on the raw raster-derived island shape -
+            # same reasoning as build_copper_polygons's own single simplify:
+            # pocket_paths() then shrinks this one already-simple polygon
+            # deterministically (each concentric ring is an exact
+            # buffer(-step) of the previous), rather than independently
+            # simplifying each already-jagged raster contour repeatedly.
+            # This turned out to be the dominant source of the point-count
+            # blowup - 457,084 of 502,634 total points on a real board,
+            # not the main channel passes - since these islands come
+            # straight from a raster mask with no upstream simplification
+            # at all otherwise.
+            poly = poly.simplify(SIMPLIFY_TOLERANCE_MM, preserve_topology=True)
             if not poly.is_empty:
                 islands.append(poly)
     print(f"orphan islands found: {len(islands)} "
@@ -279,7 +373,10 @@ def pocket_paths(island_polys):
     """Fully clear each orphan island - not just its boundary - with
     concentric inward offsets (classic pocket-clearing), since these are
     small enough that machining time isn't a concern the way it would be
-    for the whole board (see MAX_ORPHAN_AREA_MM2)."""
+    for the whole board (see MAX_ORPHAN_AREA_MM2). Not simplified, same
+    reasoning as channel_paths/paths_of: each concentric ring here is an
+    exact buffer(-step) of the previous one, and independently simplifying
+    each emitted ring risks eroding that same relationship."""
     paths = []
     step = TOOL_DIA_MM * (1 - OVERLAP_FRACTION)
     for poly in island_polys:
@@ -292,6 +389,57 @@ def pocket_paths(island_polys):
                     paths.append(coords)
             current = current.buffer(-step, join_style="round", quad_segs=8)
     return paths
+
+
+def order_paths(paths):
+    """Greedily reorder paths (nearest-neighbour heuristic, by each path's
+    own existing start point) to minimize total rapid-travel distance
+    between them.
+
+    Without this, ~2400 separate loops emitted in whatever order Shapely's
+    unary_union/buffer happened to produce them in (essentially arbitrary,
+    not spatially sorted) produced ~20,000mm of G00 travel alone on a real
+    board - more than the ~14,800mm of actual cutting - and Snapmaker's own
+    time estimate barely moved even after the point-count fix (see module
+    docstring point 4) cut total G-code size 14x. Confirmed this is because
+    some G-code time estimators (Luban, apparently) charge G00 moves at the
+    active cutting feedrate rather than a fast jog rate, so unsorted rapid
+    travel between many small loops can dominate the estimate even when
+    cutting length alone is reasonable. This is an O(n^2) greedy heuristic,
+    not a true shortest-tour solve - fine at this problem size (a couple of
+    thousand paths, well under a second) and good enough to cut travel by
+    roughly an order of magnitude, not to find the mathematically optimal
+    tour.
+
+    Deliberately does NOT also rotate closed rings to start at whichever
+    vertex is closest (which would save a little more travel - a closed
+    ring can be entered anywhere without changing the cut, in principle).
+    Tried and rejected: despite every rotation provably preserving the
+    ring's own edge set (confirmed by hand), it measurably regressed real
+    coverage - board-wide leftover-copper defects grew from 69 to 98
+    instances and the largest from 0.315mm^2 to 0.947mm^2, all at brand
+    new locations. Not re-derived further; the most likely explanation is
+    that verify_isolation.py/render_at's PIL-based thick-line rendering
+    (round joints) isn't perfectly seam-position-independent, so moving
+    where a ring's start/end seam falls can shift a rendering artifact
+    there even though the underlying geometry is unchanged. Reordering
+    alone already recovers the vast majority of the travel-time win
+    (1430mm vs 1492mm rapid travel with rotation, on the same board) at
+    zero correctness cost, so it wasn't worth chasing further."""
+    remaining = list(paths)
+    starts = np.array([p[0] for p in remaining], dtype=float)
+    ordered = []
+    cur = np.array([0.0, 0.0])
+    used = np.zeros(len(remaining), dtype=bool)
+    for _ in range(len(remaining)):
+        d2 = np.sum((starts - cur) ** 2, axis=1)
+        d2[used] = np.inf
+        i = int(np.argmin(d2))
+        used[i] = True
+        coords = remaining[i]
+        ordered.append(coords)
+        cur = np.array(coords[-1], dtype=float)
+    return ordered
 
 
 def write_gcode(paths, out_path):
@@ -344,7 +492,8 @@ def main():
     main_paths = channel_paths(copper_union, args.board_w, args.board_h)
     islands = find_orphan_islands(args.svg_path, args.board_w, args.board_h, main_paths)
     extra_paths = pocket_paths(islands)
-    write_gcode(main_paths + extra_paths, args.out_path)
+    all_paths = order_paths(main_paths + extra_paths)
+    write_gcode(all_paths, args.out_path)
 
 
 if __name__ == "__main__":
