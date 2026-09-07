@@ -384,9 +384,12 @@ for layer, name in [(pcbnew.F_Cu, "GND_POUR"), (pcbnew.B_Cu, "GND_POUR_B")]:
     zone.SetIsFilled(False)
     zone.SetLocalClearance(pcbnew.FromMM({ZONE_CLEARANCE_MM}))
     zone.SetThermalReliefGap(pcbnew.FromMM({ZONE_THERMAL_GAP_MM}))
-    # keep disconnected fill fragments (deliberate: cheaper to mill solid
-    # copper than bare board carved out of the same area)
-    zone.SetIslandRemovalMode(pcbnew.ISLAND_REMOVAL_MODE_NEVER)
+    # Remove disconnected fill fragments. On the milling pipeline this was
+    # deliberately NEVER (cheaper to mill solid copper than carve bare
+    # board out of the same area) - that argument doesn't apply to a
+    # fab-etched board, where isolated GND-labelled copper that isn't
+    # actually connected to GND serves no purpose and is just left removed.
+    zone.SetIslandRemovalMode(pcbnew.ISLAND_REMOVAL_MODE_ALWAYS)
     b.Add(zone)
 
 filler = pcbnew.ZONE_FILLER(b)
