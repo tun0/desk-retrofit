@@ -118,6 +118,11 @@ schematics/    KiCad 7 format, symbols embedded, no external libs
                  verify_isolation.py <- per-pixel toolpath/copper verification, `make verify`
                  snapmaker_header.py <- patches raw G-code with the header the Snapmaker
                                         touchscreen requires to load a file at all
+                 feedrate_stresstest.py <- isolated single-pad-shape feed-rate calibration
+                                      coupon generator (standalone, not wired into `make`)
+                 tracknet_stresstest.py <- track-network feed-rate calibration coupon
+                                      generator - neighbouring-copper spacing, not a single
+                                      shape's own corners (standalone, not wired into `make`)
                  Makefile          <- `make` regenerates .kicad_sch/.pdf/.svg;
                                       `make mill`/`mill-flatcam`/`verify` drive milling
 my_components/desk/   ESPHome external component (cover platform)

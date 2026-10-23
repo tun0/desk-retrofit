@@ -694,7 +694,7 @@ board-mm coordinates, with true board bottom-left as `(0,0)` by
 construction - no dependency on pcb2gcode's bounding-box-inflation quirk
 (§7.1 above) at all.
 
-Three real defects were found and fixed during development, each traced to
+Five real defects were found and fixed during development, each traced to
 a genuine root cause rather than papered over:
 
 1. **A pad's own future drill hole isn't a net boundary.** The first
@@ -735,8 +735,41 @@ a genuine root cause rather than papered over:
    rather than this expected characteristic - confirmed this cutoff
    correctly separates the ~140mm² of genuinely small, legitimate leftover
    crumbs from the ~600mm² network-wide characteristic on this board.
+4. **Un-simplified point-count blowup.** `cv2.findContours`'s
+   `CHAIN_APPROX_NONE` keeps a vertex every ~0.01mm along any curve, and
+   Shapely's `.buffer()` adds its own points on top of that - a real
+   board's G-code ballooned to ~1M lines (~19x pcb2gcode's ~54k), and
+   Snapmaker's own time estimate went from ~1h/side to ~7.5h/side.
+   Simplifying each offset pass's own emitted ring independently was tried
+   first and rejected: confirmed to erode the deliberate overlap margin
+   between adjacent passes into real hairline gaps at some pad boundaries,
+   since each pass's simplification error is uncorrelated with its
+   neighbours'. Fixed by simplifying exactly once per shape, on the shared
+   source before any buffering (`build_copper_polygons()`'s return line,
+   and each orphan island in `find_orphan_islands()`) - every offset pass
+   is then `buffer()`'d deterministically from the same fixed input, so
+   their relationship to each other is exact regardless of the input's own
+   coarseness. This alone did NOT fix the time estimate (still ~7.5h/side
+   after a 14x point-count cut) - see defect 5.
+5. **Rapid-travel blowup - the actual cause of the ~7.5h/side estimate.**
+   ~2400 separate loops were emitted in whatever order Shapely's
+   `unary_union`/`buffer` happened to produce (effectively arbitrary, not
+   spatially sorted), producing ~20,000mm of G00 rapid travel alone on a
+   real board - more than the ~14,800mm of actual cutting. Confirmed
+   Snapmaker's own time estimator (Luban) charges G00 moves at the active
+   cutting feedrate rather than a fast jog rate, so this unsorted travel
+   dominated the estimate even after defect 4 was fixed. Fixed with a
+   greedy nearest-neighbour reordering pass (`order_paths()`) - cut rapid
+   travel to ~1430mm, close to pcb2gcode's own ~725mm on the same board.
+   Also tried, and rejected: rotating each closed ring to start at its
+   closest vertex to the incoming position (saves a little more travel in
+   principle) measurably regressed real coverage instead (board-wide
+   defect count 69→98, max size 0.315→0.947mm², all at new locations) -
+   suspected cause is that `verify_isolation.py`'s thick-line rendering
+   isn't perfectly seam-position-independent. Reordering alone recovers
+   nearly all the travel benefit at zero correctness cost.
 
-After all three fixes, extensive spot-checking (all four mounting holes on
+After all five fixes, extensive spot-checking (all four mounting holes on
 both layers, the full ESP32 DevKitC header row, several vias and pads near
 C4/D4/U5 including a 4-spoke thermal-relief pad) found no further defects -
 each checked against both the raw per-pixel diagnostic and the
