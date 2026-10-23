@@ -501,6 +501,33 @@ Recorded because several later conclusions only make sense in light of these.
     Now the default `make mill`; pcb2gcode and FlatCAM both stay as
     explicit fallbacks (`make mill-pcb2gcode`, `make mill-flatcam`). See
     APPENDIX §7.2 for the full investigation.
+13. **`island_removal_mode=Never` on both GND pours, inherited unchanged
+    into the fab-manufacture exploration.** That setting was deliberate for
+    milling (cheaper to leave a disconnected fill fragment as solid copper
+    than carve bare board around it for no electrical reason) -
+    `schematics/gen/reroute_pcb.py`'s own comment says so. It has no reason
+    to survive on `pcb-fab-redesign`: a fab house's etch cost doesn't
+    depend on how much copper is removed, so those fragments were just
+    isolated, non-functional copper labelled GND without being connected to
+    it. Flipped to `Always` and refilled; DRC unaffected (same 20
+    pre-existing silkscreen warnings, nothing copper-related).
+
+This branch exists to explore manufacturing the board at a fab house
+instead of hand-milling it, after the milling investigation above (and the
+calibration coupons in `schematics/gen/feedrate_stresstest.py` /
+`tracknet_stresstest.py`) made clear how much of the schedule and risk
+budget the milling step was consuming. Going to a fab removes that risk
+entirely - the design's actual DRC clearance (0.4mm, `desk.kicad_pro`) is
+already well inside any commercial 2-layer fab's capability (≤0.15mm is
+routine), so no design-rule loosening is needed, and it frees up decisions
+that were previously constrained by the mill/jig process: the ground pour
+can stay (or even improve, now that isolated fragments are gone), and
+component/connector placement (e.g. screw-terminal orientation) is no
+longer constrained by hand-mill registration. Main trade-off: cost and
+lead time (small-batch 2-layer boards are cheap, but typically a ~5-board
+MOQ and 1-2 weeks) replace milling's slow-but-immediate turnaround. No
+decision has been made yet - this is why it's a branch, not a change to
+the chosen design in §4.
 
 ---
 
